@@ -22,14 +22,6 @@ beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
 });
 
-function userWithRole(string $role): User
-{
-    $user = User::factory()->create();
-    $user->assignRole($role);
-
-    return $user;
-}
-
 function approve(): ApproveOnboardingApplicationAction
 {
     return app(ApproveOnboardingApplicationAction::class);

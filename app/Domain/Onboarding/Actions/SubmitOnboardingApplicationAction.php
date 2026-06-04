@@ -20,8 +20,6 @@ use Illuminate\Database\DatabaseManager;
 
 final class SubmitOnboardingApplicationAction
 {
-    private const DOCUMENT_DISK = 'r2';
-
     public function __construct(
         private readonly DatabaseManager $db,
         private readonly FilesystemFactory $filesystem,
@@ -108,14 +106,15 @@ final class SubmitOnboardingApplicationAction
 
     private function storeDocument(OnboardingApplication $application, DocumentUploadData $document): void
     {
-        $disk = $this->filesystem->disk(self::DOCUMENT_DISK);
+        $diskName = config('onboarding.documents.disk');
+        $disk = $this->filesystem->disk($diskName);
 
         // Private path namespaced by the application's public uuid.
         $path = $disk->putFile("onboarding/{$application->uuid}", $document->file);
 
         $application->documents()->create([
             'type' => $document->type,
-            'disk' => self::DOCUMENT_DISK,
+            'disk' => $diskName,
             'path' => $path,
             'original_filename' => $document->file->getClientOriginalName(),
             'mime_type' => $document->file->getClientMimeType(),

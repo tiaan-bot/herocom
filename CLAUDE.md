@@ -220,6 +220,14 @@ Domain root: `app/Domain/Onboarding` (Models, Enums, plus Actions/Services/Event
 - **Public identifiers**: Company / OnboardingApplication / OnboardingDocument expose a `uuid` route key (`HasUuid` in `app/Domain/Shared/Concerns`). Never expose the internal id or `zoho_customer_id` in URLs.
 - **Authorization**: the full role → permission matrix is seeded by `RolePermissionSeeder` (idempotent — `firstOrCreate` per permission, `syncPermissions` per role). Onboarding abilities: `view/process/approve_onboarding_applications` (sales_admin), `manage_company_credit` (finance_admin). **super_admin is granted nothing explicitly** — it bypasses every check via a `Gate::before` in `AppServiceProvider` (returns `true` for super_admin, `null` otherwise). New permissions are added to `RolePermissionSeeder`, not assigned to super_admin.
 
+### Onboarding admin (Filament)
+
+- **Two resources**: `OnboardingApplicationResource` (the review/approve workflow) and a minimal `CompanyResource` (finance credit). Both live under `app/Filament/Resources`; navigation group "Onboarding".
+- **Applications are never admin-created or free-edited** (`canCreate(): false`, no edit page). Admins only *act* via gated header/row actions that call the domain Actions — there is **no business logic in Filament**. Each maps to an Action: `RequestApplicationInformationAction`, `RecordCgicOutcomeAction`, `Approve`/`RejectOnboardingApplicationAction`, `VerifyOnboardingDocumentAction`, `SetCompanyCreditAction`.
+- **Two-party flow**: finance records CGIC + sets credit (`manage_company_credit`); sales verifies docs + approves/rejects (`process_` / `approve_onboarding_applications`). **Approve is disabled** (tooltip "Awaiting CGIC approval") for credit apps until `cgic_status = approved`; the Action also enforces it server-side and the page catches `OnboardingDecisionException` into a danger notification.
+- **PII in the admin**: documents served via short-lived signed URLs (`GenerateOnboardingDocumentUrlAction` → `temporaryUrl` on the per-document disk, audited); `id_number` masked with an audited "Reveal ID" action (`RevealPrincipalIdAction`); `cgic_payload` shown only to `manage_company_credit` via an audited action (`ViewCgicPayloadAction`). Reveal/CGIC/download access all write activitylog entries.
+- **Document disk is env-driven** (`config/onboarding.php` → `ONBOARDING_DOCUMENT_DISK`, default `r2`): production uses R2; set to `local` in dev (serve=true, so `temporaryUrl` works) until R2 creds are wired.
+
 ---
 
 ## 7. Zoho Integration Rules

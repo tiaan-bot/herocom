@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -44,7 +45,13 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Create a user assigned to the given role (role records come from the seeders).
+ */
+function userWithRole(string $role): User
 {
-    // ..
+    $user = User::factory()->create();
+    $user->assignRole($role);
+
+    return $user;
 }

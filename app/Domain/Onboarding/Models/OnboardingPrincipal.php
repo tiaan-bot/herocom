@@ -11,6 +11,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
+/**
+ * @property string $id_number
+ * @property-read OnboardingApplication $application
+ */
 class OnboardingPrincipal extends Model
 {
     /** @use HasFactory<OnboardingPrincipalFactory> */

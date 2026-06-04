@@ -32,6 +32,15 @@ class OnboardingApplicationPolicy
         return $user->can('approve_onboarding_applications');
     }
 
+    /**
+     * Recording the CGIC outcome and viewing the CGIC submission packet are
+     * credit-risk operations gated to finance.
+     */
+    public function recordCgic(User $user, OnboardingApplication $application): bool
+    {
+        return $user->can('manage_company_credit');
+    }
+
     public function reject(User $user, OnboardingApplication $application): bool
     {
         return $user->can('approve_onboarding_applications');

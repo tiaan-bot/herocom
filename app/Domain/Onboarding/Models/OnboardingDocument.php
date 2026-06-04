@@ -17,8 +17,11 @@ use Spatie\Activitylog\Support\LogOptions;
 
 /**
  * @property string $uuid
+ * @property string $disk
+ * @property string $path
  * @property DocumentType $type
  * @property VerificationStatus $verification_status
+ * @property-read OnboardingApplication $application
  */
 class OnboardingDocument extends Model
 {
