@@ -19,6 +19,17 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
+/**
+ * @property string $uuid
+ * @property int $company_id
+ * @property AccountType $account_type_requested
+ * @property ApplicationStatus $status
+ * @property string $contact_name
+ * @property string $contact_email
+ * @property CgicStatus $cgic_status
+ * @property TurnoverBand|null $annual_turnover_band
+ * @property-read Company $company
+ */
 class OnboardingApplication extends Model
 {
     /** @use HasFactory<OnboardingApplicationFactory> */

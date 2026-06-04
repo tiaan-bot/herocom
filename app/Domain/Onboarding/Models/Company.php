@@ -19,6 +19,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
+/**
+ * @property string $uuid
+ * @property EntityType $entity_type
+ * @property CompanyStatus $status
+ * @property CreditTerms $credit_terms
+ * @property string|null $zoho_customer_id
+ */
 class Company extends Model
 {
     /** @use HasFactory<CompanyFactory> */

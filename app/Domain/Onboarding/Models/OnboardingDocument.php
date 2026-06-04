@@ -15,6 +15,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
+/**
+ * @property string $uuid
+ * @property DocumentType $type
+ * @property VerificationStatus $verification_status
+ */
 class OnboardingDocument extends Model
 {
     /** @use HasFactory<OnboardingDocumentFactory> */
