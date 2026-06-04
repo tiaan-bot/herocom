@@ -18,13 +18,13 @@ Designed for SA launch with international expansion later — schema is multi-cu
 
 | Layer | Choice | Version |
 |---|---|---|
-| Language | PHP | 8.3+ |
+| Language | PHP | 8.4 (dev on 8.4.22) |
 | Framework | Laravel | 12.x |
 | Database | PostgreSQL | 16 |
 | Cache / Queue / Sessions | Redis | 7 |
 | Queue worker | Laravel Horizon | latest |
 | Admin panel | Filament | v4 |
-| Reseller portal | Inertia.js + Vue 3 + Tailwind 4 | latest |
+| Reseller portal | Inertia 2 (hand-wired) + Vue 3 + Tailwind 4 | latest |
 | UI components | shadcn-vue | latest |
 | Search | Meilisearch | 1.x |
 | Object storage | Cloudflare R2 (S3-compatible) | — |
@@ -32,7 +32,7 @@ Designed for SA launch with international expansion later — schema is multi-cu
 | Permissions | spatie/laravel-permission | latest |
 | Audit log | spatie/laravel-activitylog | latest |
 | Email | Postmark (transactional) + Mailgun inbound (tickets) | — |
-| Testing | Pest | 3.x |
+| Testing | Pest | 4.x (on PHPUnit 12) |
 | Deployment | Laravel Forge → Hostinger VPS (Ubuntu) | — |
 | Source of truth | Zoho Books (REST API + webhooks) | — |
 | Payments | Zoho Books native PayFast integration | — |
@@ -40,7 +40,7 @@ Designed for SA launch with international expansion later — schema is multi-cu
 > **Version note (changed from the original plan):** the original brief specified Laravel 11 / Filament v3 / Tailwind 3. Laravel 11 reached end of security support on 12 March 2026, so a new build should not start on it. We are on **Laravel 12** (supported into Feb 2027; the 12→13 upgrade is near-zero-effort). Moving off Laravel 11 also let us adopt **Filament v4** (stable since Aug 2025), which runs on **Tailwind 4** — this keeps the admin panel and the shadcn-vue reseller portal on a single Tailwind major. No architectural decisions changed; this is a version refresh only.
 >
 > - **Tailwind 4** uses CSS-first configuration (no `tailwind.config.js` by default). Configure via the `@theme` directive in CSS.
-> - The Laravel 12 default install ships with **PHPUnit**. We will swap the test layer to **Pest 3** during Phase 0.
+> - The test layer was swapped from the default PHPUnit to **Pest 4** in Phase 0 (PHPUnit removed as a top-level dep; Pest pulls in PHPUnit 12). Plugins installed: laravel, arch, mutate, profanity.
 > - **Filament v4** has built-in panel authentication and 2FA. Fortify is still the auth layer for the **reseller portal** (Inertia/Vue). For the Filament admin panel, prefer Filament's native auth + 2FA rather than wiring Fortify into it.
 
 ---
@@ -51,15 +51,21 @@ Development is on **Windows using Laragon** (the founder's existing, familiar se
 
 | Tool | Where | Notes |
 |---|---|---|
-| PHP 8.3.x | Laragon (`C:\laragon\bin\php\...`) | `pdo_pgsql` + `pgsql` extensions enabled |
-| Composer 2.x | Laragon | — |
-| Node + npm | Laragon (bundled) | Confirm enabled before front-end work |
-| Redis | Laragon (bundled) | Confirm enabled before Horizon work |
-| Terminal | Cmder (Laragon's Terminal button) | cmd-based; mind `^` escaping — quote Composer version constraints |
+| PHP 8.4.22 | Laragon (`C:\laragon\bin\php\...`) | Thread Safe / VS17 / x64. Extensions: `pdo_pgsql`, `pgsql`, `zip`. No `redis` extension — see Redis note. |
+| Composer 2.9.4 | Laragon | — |
+| Node v22 + npm 10 | Laragon (bundled) | Confirm enabled before front-end work |
+| Redis | Laragon (bundled) | `REDIS_CLIENT=predis` on dev (pure-PHP, no extension), `phpredis` in production. See Redis note below. |
+| Terminal | Cmder (Laragon's Terminal button) | cmd-based; mind `^` escaping — always quote Composer version constraints, e.g. `composer require pkg:"^4.0"` (bare cmd strips the caret and pins an exact version) |
 | PostgreSQL 16 | **Standalone Windows service** (EDB installer), `localhost:5432` | Runs independently of Laragon; superuser `postgres`; pgAdmin 4 installed |
 | Project root | `C:\laragon\www\herocom` | Served at `http://herocom.test` (Laragon auto-vhost) |
 
 **Dev/prod parity caveat:** local is Windows, production is Ubuntu. Watch for path-separator and case-sensitivity assumptions, and prefer Forge/Ubuntu-native process management (Supervisor for Horizon) on the server rather than mirroring Windows habits.
+
+**Redis client (dev vs prod):** set via the `REDIS_CLIENT` env var — `predis` on dev, `phpredis` in production. The official phpredis Windows DLL stops at PHP 8.1, so dev uses pure-PHP **predis** (no extension); the Ubuntu/Forge prod box installs **phpredis** cleanly. The queue connection is already on Redis; Horizon runs fine on predis.
+
+**Horizon does not run on Windows** (it needs `ext-pcntl` / `ext-posix`, which don't exist on Windows). `composer.json` carries a `config.platform` override for those two extensions so the package still installs locally. **Locally, process jobs with `php artisan queue:work`, NOT `php artisan horizon`** — Horizon runs as the supervisor in production only.
+
+**Windows/cmd gotcha:** always quote Composer version constraints containing `^`, e.g. `composer require pkg:"^4.0"` — bare `cmd` strips the caret and pins an exact version.
 
 ---
 
@@ -158,6 +164,7 @@ tests/
 - Form Requests: `VerbNounRequest` — e.g. `StoreOrderRequest`
 
 ### Vue / Inertia
+- The front-end is **hand-wired Inertia 2 + Vue 3 + Tailwind 4 (not the official Vue starter kit)** — the starter kit ships open self-registration auth, which conflicts with the gated, approved-resellers-only B2B model. Inertia pages live in `resources/js/Pages/`.
 - Composition API only, `<script setup lang="ts">` always.
 - TypeScript everywhere. Define props with `defineProps<T>()`.
 - Components colocated by page when single-use; shared components in `resources/js/Components`.
@@ -171,6 +178,15 @@ tests/
 - Timestamps default. Soft deletes only where business reason exists (orders, tickets — never for products which sync from Zoho).
 - Index every foreign key and every column used in `WHERE` or `ORDER BY`.
 - Use Postgres-specific features where helpful: JSONB for flexible specs, partial indexes, generated columns.
+
+### Audit logging (spatie/laravel-activitylog v5)
+> v5's API differs from most docs/tutorials, which still show v4. Use the v5 forms:
+- Trait: `Spatie\Activitylog\Models\Concerns\LogsActivity` (**not** `...\Traits\LogsActivity`).
+- Options: `Spatie\Activitylog\Support\LogOptions` (**not** `Spatie\Activitylog\LogOptions`).
+- Attribute diffs are stored in the **`attribute_changes`** column, not `properties` (`properties` now holds custom properties only).
+- Use `dontLogEmptyChanges()` (**not** `dontSubmitEmptyLogs()`).
+- **Never log `password` or 2FA secrets.** Scope each model's `getActivitylogOptions()` with `logOnly([...])` / `logExcept([...])`.
+- `User` carries `LogsActivity` as the first worked example.
 
 ---
 
@@ -188,6 +204,21 @@ tests/
 | **RMA** | Return Merchandise Authorisation — generated number tied to a warranty claim. |
 | **Reservation** | When a reseller adds an item to cart, we hold stock for 15 minutes via `inventory_reservations`. Expires automatically. (Phase 3) |
 | **Rebate** | Tier-based discount paid back to high-volume resellers, calculated monthly. (Phase 3) |
+
+---
+
+## 6a. Onboarding & legal model
+
+Domain root: `app/Domain/Onboarding` (Models, Enums, plus Actions/Services/Events/etc. as the domain grows).
+
+- **Two trading modes** (from the Standard T&Cs): **COD Sale Agreement** = `eft_upfront`; **CF Sale Agreement** = `on_account`, which must be secured by a Credit Guarantee (CGIC). COD is the default; credit is discretionary and can be withdrawn (reverts to COD, clause 7.6).
+- **Onboarding is one flow** branched by `account_type_requested` (`cod` | `credit`). The credit branch collects principals, banking, credit requirements, turnover and legal disclosures; requires `bank_confirmation` + `proof_of_address` + `deed_of_surety`; and runs a **manual CGIC step**.
+- **Credit terms set on approval**: cod → `eft_upfront`; credit → `on_account` with limit/terms set by finance (`manage_company_credit`). A credit application may not be approved unless `cgic_status = approved`.
+- **Deed of Suretyship**: SA law requires an *advanced* electronic signature for an electronic suretyship — an ordinary e-sign is invalid and would make the surety unenforceable. Phase 1 stores a wet-ink scan as the `deed_of_surety` document. **Never ship an ordinary-e-sign surety.** AES via an accredited provider is deferred (Phase 3).
+- **POPIA**: onboarding holds sensitive PII (SA ID numbers, bank details, residential addresses, director info). Documents on a **private** R2 bucket (`r2` disk) with signed-URL access only; encrypt `onboarding_principals.id_number` and `onboarding_applications.cgic_payload` at rest (Laravel `encrypted` cast → opaque/non-queryable by design); audit access. Capture consent (`terms_accepted_at` + `terms_version`, `popia_consent_at`, `credit_enquiry_consent_at`) immutably.
+- **Never log** ID numbers, bank account numbers, passwords, or 2FA secrets via activitylog. Onboarding models scope `getActivitylogOptions()` accordingly (`id_number` and `cgic_payload` are excluded).
+- **Public identifiers**: Company / OnboardingApplication / OnboardingDocument expose a `uuid` route key (`HasUuid` in `app/Domain/Shared/Concerns`). Never expose the internal id or `zoho_customer_id` in URLs.
+- **Authorization**: the full role → permission matrix is seeded by `RolePermissionSeeder` (idempotent — `firstOrCreate` per permission, `syncPermissions` per role). Onboarding abilities: `view/process/approve_onboarding_applications` (sales_admin), `manage_company_credit` (finance_admin). **super_admin is granted nothing explicitly** — it bypasses every check via a `Gate::before` in `AppServiceProvider` (returns `true` for super_admin, `null` otherwise). New permissions are added to `RolePermissionSeeder`, not assigned to super_admin.
 
 ---
 
@@ -248,7 +279,7 @@ Roles managed via `spatie/laravel-permission`. Initial roles:
 
 ## 9. Testing Standards
 
-- **Pest** is the test framework. No PHPUnit syntax in new tests. (The default Laravel 12 install ships PHPUnit; swap to Pest in Phase 0.)
+- **Pest 4** is the test framework (runs on PHPUnit 12; PHPUnit was removed as a top-level dep in Phase 0). No PHPUnit syntax in new tests.
 - **Feature tests** for every HTTP endpoint and every Filament resource.
 - **Unit tests** for every Action and every Service method with branching logic.
 - **HTTP fakes** for all Zoho/Postmark/PayFast interactions — never hit real APIs in tests.
@@ -265,7 +296,7 @@ Roles managed via `spatie/laravel-permission`. Initial roles:
 # Local dev (run from C:\laragon\www\herocom in the Laragon terminal)
 php artisan serve               # or just use http://herocom.test (Laragon auto-vhost)
 npm run dev
-php artisan horizon
+php artisan queue:work          # process jobs LOCALLY (Horizon can't run on Windows — prod only)
 php artisan schedule:work
 
 # Quality
@@ -318,6 +349,7 @@ DB_DATABASE=herocom
 DB_USERNAME=postgres
 DB_PASSWORD=...                # local: the postgres superuser password set at install
 REDIS_HOST=127.0.0.1
+REDIS_CLIENT=predis            # predis on dev (no extension); phpredis in production
 
 ZOHO_CLIENT_ID=...
 ZOHO_CLIENT_SECRET=...
@@ -360,4 +392,4 @@ When working on a task, identify which Phase it belongs to and don't pull in sco
 
 ---
 
-*Last updated: end of environment-setup session — stack refreshed to Laravel 12 / Filament v4 / Tailwind 4; local dev environment is Laragon on Windows + standalone PostgreSQL 16.*
+*Last updated: Phase 0 complete (per HEROCOM_PHASE_1_HANDOVER.md §7) — confirmed stack is Laravel 12 / Filament v4 / Tailwind 4 / Pest 4 / PHP 8.4; Redis via predis on dev + phpredis in prod; Horizon is prod-only (Windows can't run it, use `queue:work` locally); activitylog v5 API notes added; front-end is hand-wired Inertia 2 + Vue 3 (not the starter kit). Next: Phase 1.*

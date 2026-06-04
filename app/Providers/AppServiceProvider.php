@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\User;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +21,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // super_admin bypasses all permission checks. Return null (not false) for
+        // everyone else so normal ability/policy resolution still runs.
+        Gate::before(function (User $user, string $ability): ?bool {
+            return $user->hasRole('super_admin') ? true : null;
+        });
     }
 }
