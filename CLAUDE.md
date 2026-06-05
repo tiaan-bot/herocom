@@ -228,6 +228,14 @@ Domain root: `app/Domain/Onboarding` (Models, Enums, plus Actions/Services/Event
 - **PII in the admin**: documents served via short-lived signed URLs (`GenerateOnboardingDocumentUrlAction` → `temporaryUrl` on the per-document disk, audited); `id_number` masked with an audited "Reveal ID" action (`RevealPrincipalIdAction`); `cgic_payload` shown only to `manage_company_credit` via an audited action (`ViewCgicPayloadAction`). Reveal/CGIC/download access all write activitylog entries.
 - **Document disk is env-driven** (`config/onboarding.php` → `ONBOARDING_DOCUMENT_DISK`, default `r2`): production uses R2; set to `local` in dev (serve=true, so `temporaryUrl` works) until R2 creds are wired.
 
+### Public application form
+
+- **Public route `GET/POST /apply`** (+ `GET /apply/success`) — a thin `Web\OnboardingApplicationController` that reuses `StoreOnboardingApplicationRequest` (validation + `toData()`) and `SubmitOnboardingApplicationAction`. No business logic in the controller. POST is `throttle:5,60` and the request carries a **honeypot** (`website` field, `prohibited` rule). T&Cs version comes from `config('onboarding.terms.version')`.
+- **No email verification in Phase 1** — on submit we create the application + send an `ApplicationReceivedNotification` (on-demand mail) and redirect to the success page. Spam control = throttle + honeypot only. Real verification (column + token + route) is a deferred fast-follow.
+- **Multi-step Vue/Inertia wizard** (`resources/js/Pages/Onboarding/Apply.vue`) branched by `account_type_requested`; credit adds Principals + Financials steps. Wizard state is in-component only (no draft/save-progress; single-session). Client mirrors required-field/doc rules for UX but the Form Request is the source of truth.
+- **Front-end stack is TypeScript** (the "TypeScript everywhere" standard applies): shadcn-vue (Reka UI, `typescript: true`) under `resources/js/components/ui`, `@/` alias wired in both `vite.config.js` and `tsconfig.json`, `cn()` in `resources/js/lib/utils.ts`, lucide icons. Entry is `resources/js/app.ts`. Pages/components use `<script setup lang="ts">`; type the Inertia page props and `useForm<T>` payloads. Run `npm run typecheck` (`vue-tsc --noEmit`) — keep it green. Reference the lowercase `@/components/...` path (case-sensitive in prod).
+- **Document uploads are server-side** to the env-driven private disk (`ONBOARDING_DOCUMENT_DISK`); no presigned/direct-to-R2 uploads yet.
+
 ---
 
 ## 7. Zoho Integration Rules

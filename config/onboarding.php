@@ -21,4 +21,20 @@ return [
         'url_ttl_minutes' => (int) env('ONBOARDING_DOCUMENT_URL_TTL', 5),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Terms & Conditions
+    |--------------------------------------------------------------------------
+    |
+    | The currently-hosted T&Cs version captured against each application at
+    | submission, plus a link the public form can point at. A proper versioned
+    | document store / re-acceptance workflow is deferred (see CLAUDE.md).
+    |
+    */
+
+    'terms' => [
+        'version' => env('ONBOARDING_TERMS_VERSION', '2026-01'),
+        'url' => env('ONBOARDING_TERMS_URL', '/terms-of-sale.pdf'),
+    ],
+
 ];

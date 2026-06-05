@@ -29,6 +29,32 @@ class StoreOnboardingApplicationRequest extends FormRequest
     }
 
     /**
+     * Normalise blank optional inputs to null so 'nullable' short-circuits the
+     * enum/numeric rules (the multipart form posts "" for untouched fields).
+     */
+    protected function prepareForValidation(): void
+    {
+        $nullableIfBlank = [
+            'trading_name', 'registration_number', 'vat_number', 'nature_of_business',
+            'address_line2', 'landlord_name', 'landlord_address', 'landlord_tel',
+            'period_at_address', 'credit_limit_requested', 'credit_terms_requested_days',
+            'annual_turnover_band',
+        ];
+
+        $merge = [];
+
+        foreach ($nullableIfBlank as $field) {
+            if ($this->input($field) === '') {
+                $merge[$field] = null;
+            }
+        }
+
+        if ($merge !== []) {
+            $this->merge($merge);
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function rules(): array
@@ -39,6 +65,9 @@ class StoreOnboardingApplicationRequest extends FormRequest
         $hasVat = filled($this->input('vat_number'));
 
         return [
+            // Honeypot — must stay empty; bots that fill it are rejected.
+            'website' => ['prohibited'],
+
             // Company
             'legal_name' => ['required', 'string', 'max:255'],
             'trading_name' => ['nullable', 'string', 'max:255'],
