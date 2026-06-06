@@ -7,6 +7,7 @@ use App\Http\Controllers\Web\Auth\SetPasswordController;
 use App\Http\Controllers\Web\CartController;
 use App\Http\Controllers\Web\CatalogController;
 use App\Http\Controllers\Web\CheckoutController;
+use App\Http\Controllers\Web\InvoiceController;
 use App\Http\Controllers\Web\OnboardingApplicationController;
 use App\Http\Controllers\Web\OrderController;
 use App\Http\Middleware\EnsureApprovedReseller;
@@ -50,6 +51,12 @@ Route::middleware(['auth', EnsureApprovedReseller::class])->group(function (): v
     Route::middleware('can:view_orders')->group(function (): void {
         Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/{order:uuid}', [OrderController::class, 'show'])->name('orders.show');
+    });
+
+    // My Invoices (Zoho-mirrored, scoped to the user's company; drafts hidden).
+    Route::middleware('can:view_invoices')->group(function (): void {
+        Route::get('/invoices', [InvoiceController::class, 'index'])->name('invoices.index');
+        Route::get('/invoices/{invoice:uuid}', [InvoiceController::class, 'show'])->name('invoices.show');
     });
 
     // Mutating the cart + checking out needs place_orders (reseller_viewer is read-only).

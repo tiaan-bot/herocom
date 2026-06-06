@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Domain\Billing\Models\Invoice;
+use App\Domain\Billing\Policies\InvoicePolicy;
 use App\Domain\Onboarding\Events\CompanyApproved;
 use App\Domain\Onboarding\Listeners\PushCompanyToZoho;
 use App\Domain\Onboarding\Listeners\SendWelcomeEmail;
@@ -31,6 +33,7 @@ class AppServiceProvider extends ServiceProvider
         OnboardingApplication::class => OnboardingApplicationPolicy::class,
         Company::class => CompanyPolicy::class,
         Order::class => OrderPolicy::class,
+        Invoice::class => InvoicePolicy::class,
     ];
 
     /**

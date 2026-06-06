@@ -276,6 +276,17 @@ Domain root: `app/Domain/Ordering`. Cart → checkout → Order → Zoho Sales O
 
 ---
 
+## 6e. Billing domain
+
+Domain root: `app/Domain/Billing`. **Invoices are owned by Zoho Books** — we mirror them one-way for display, like products. We never create, edit, or compute an invoice. Payments live in Zoho; in Phase 1 the portal links out to Zoho's hosted pay page rather than integrating PayFast directly.
+
+- **Invoice mirror** (`invoices` table): unique `zoho_invoice_id` (idempotency anchor), `company_id` (resolved from `zoho_customer_id`), nullable `order_id`, `InvoiceStatus` enum (`draft/sent/overdue/paid/partially_paid/void` + `unknown` fallback via `fromZoho`), and **VAT-inclusive money** (`subtotal_ex_vat`, `tax_total`, `total`, `balance` as Zoho reports — unlike the catalog's ex-VAT display). No soft deletes. `scopeVisible` hides drafts.
+- **Sync** (`SyncInvoicesFromZoho`, one-way Zoho → Laravel): list invoices to **skip + count + log** any whose `customer_id` has no portal `Company` (never stored), then fetch each portal invoice's **detail** — the list payload omits `sub_total`/`tax_total`/`salesorders`. Upsert on `zoho_invoice_id`. The pay link is the detail's `invoice_url`; the linked portal order is matched via `salesorders[0].reference_number` (our `HD-` order number, **not** the invoice's own `reference_number`, which is the Zoho SO number). Field mapping was verified against a live payload.
+- **No webhooks in Phase 1.** `SyncZohoInvoices` job (tries=5, backoff) runs **incremental every 30 min** (filtered by max `zoho_last_modified_at`) + **full nightly** (02:30); `zoho:sync-invoices {--full}` runs it manually. The Filament `ZohoSync` page (formerly `CatalogSync`) shows product + invoice counts/last-synced and queues a full sync of either; gated `manage_catalog_sync`.
+- **Portal**: `/invoices`(+`/{uuid}`) gated `auth` + approved reseller + `view_invoices`, scoped to the user's company (`InvoicePolicy`); **drafts are denied** (hidden) even for the owning company. Detail shows the totals breakdown, an **overdue banner**, the linked order number, and a **Pay now** button (opens `payment_url` in a new tab) only when `balance > 0` and a pay link exists.
+
+---
+
 ## 7. Zoho Integration Rules
 
 **Authentication:** **Self-client (server-to-server) OAuth 2.0** — no redirect flow. A one-time `zoho:authorize {grantToken}` exchanges a self-client grant token for a refresh token; `ZohoClient` (`app/Domain/Shared/Zoho`) auto-refreshes access tokens thereafter. `zoho_tokens` is a single-row, **encrypted** store (`refresh_token`, `access_token`); tokens are never logged. Token refresh is wrapped in a cache lock so parallel queued jobs don't double-refresh.

@@ -17,10 +17,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property string $uuid
  * @property int $company_id
+ * @property int|null $order_id
  * @property string $zoho_invoice_id
  * @property string $invoice_number
  * @property InvoiceStatus $status
+ * @property \Illuminate\Support\Carbon $invoice_date
+ * @property \Illuminate\Support\Carbon|null $due_date
+ * @property string $subtotal_ex_vat
+ * @property string $tax_total
+ * @property string $total
  * @property string $balance
+ * @property string $currency
  * @property string|null $payment_url
  */
 class Invoice extends Model
