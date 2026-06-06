@@ -9,7 +9,8 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\URL;
 
 class OnboardingWelcomeNotification extends Notification implements ShouldQueue
 {
@@ -26,14 +27,8 @@ class OnboardingWelcomeNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         /** @var User $notifiable */
-        $token = Password::broker()->createToken($notifiable);
-
-        // TODO(portal-auth): point at the named reseller-portal set-password route once
-        // Fortify/the portal auth flow exists. For now build the link from APP_URL.
-        $url = url('/set-password?'.http_build_query([
-            'token' => $token,
-            'email' => $notifiable->getEmailForPasswordReset(),
-        ]));
+        // Signed, 7-day set-password link bound to the user's uuid.
+        $url = URL::temporarySignedRoute('password.set', Carbon::now()->addDays(7), ['user' => $notifiable->uuid]);
 
         return (new MailMessage)
             ->subject('Welcome to Herocom Distribution')
@@ -41,6 +36,6 @@ class OnboardingWelcomeNotification extends Notification implements ShouldQueue
             ->line('Your reseller account has been approved.')
             ->line('Set your password to get started.')
             ->action('Set your password', $url)
-            ->line('This link will expire shortly for your security.');
+            ->line('This link expires in 7 days. If it lapses, you can request a new one from the login page.');
     }
 }

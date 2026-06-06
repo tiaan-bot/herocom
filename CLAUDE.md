@@ -61,7 +61,7 @@ Development is on **Windows using Laragon** (the founder's existing, familiar se
 
 **Dev/prod parity caveat:** local is Windows, production is Ubuntu. Watch for path-separator and case-sensitivity assumptions, and prefer Forge/Ubuntu-native process management (Supervisor for Horizon) on the server rather than mirroring Windows habits.
 
-**Redis client (dev vs prod):** set via the `REDIS_CLIENT` env var — `predis` on dev, `phpredis` in production. The official phpredis Windows DLL stops at PHP 8.1, so dev uses pure-PHP **predis** (no extension); the Ubuntu/Forge prod box installs **phpredis** cleanly. The queue connection is already on Redis; Horizon runs fine on predis.
+**Redis client (dev vs prod):** set via the `REDIS_CLIENT` env var — `predis` on dev, `phpredis` in production. The official phpredis Windows DLL stops at PHP 8.1, so dev uses pure-PHP **predis** (no extension); the Ubuntu/Forge prod box installs **phpredis** cleanly. **Sessions, cache, and the queue all run on Redis** (`SESSION_DRIVER=redis`, `CACHE_STORE=redis`) — on predis in dev. The legacy `sessions`/`cache` DB tables are harmless leftovers.
 
 **Horizon does not run on Windows** (it needs `ext-pcntl` / `ext-posix`, which don't exist on Windows). `composer.json` carries a `config.platform` override for those two extensions so the package still installs locally. **Locally, process jobs with `php artisan queue:work`, NOT `php artisan horizon`** — Horizon runs as the supervisor in production only.
 
@@ -248,6 +248,18 @@ Domain root: `app/Domain/Catalog`. The `products` table is a **read-optimised on
 - **Stock**: shown as a band (`StockBand`: in/low/out, low ≤ `config('catalog.low_stock_threshold')`, default 5), never the exact quantity.
 - **Search**: Postgres `LOWER(col) LIKE` (portable case-insensitive) over name/sku/brand — Scout + Meilisearch is a deferred drop-in for large catalogues (10k+ SKUs).
 - **Catalog access** (`/catalog`, `/catalog/{uuid}`): `auth` + `EnsureApprovedReseller` (reseller must belong to an `approved` company; internal staff with no company pass) + `can:view_catalog`. No cart yet (Ordering pass).
+
+---
+
+## 6c. Reseller portal auth
+
+Domain root for auth actions: `app/Domain/Identity`; thin Web controllers under `app/Http/Controllers/Web/Auth`.
+
+- **Hand-wired Inertia auth** (no starter kit / no Fortify — the starter kit's open self-registration conflicts with the gated B2B model). **No self-registration ever**: users exist only via the onboarding approval flow (`reseller_owner`) or admin creation. The login page links to `/apply`.
+- **Single `web` guard** for everyone. After login: **company users → `/catalog`, internal staff (no company) → `/admin`**. `redirectGuestsTo('/login')`.
+- **Set-password** (first-time): the welcome email links to a **signed, 7-day route** `GET /set-password/{user:uuid}`; success sets the password, logs the user in, redirects to `/catalog`. The link is **single-purpose** (guarded by `users.password_set_at`); an expired/invalid signature shows a friendly page with a **throttled re-send**. Logic lives in `SetUserPasswordAction`.
+- **Login / logout / forgot / reset**: standard `web` session auth + the Password broker; the reset page reuses the set-password `PasswordFields` component. Login is throttled (`Password::defaults()`, standard "remember me"). **No 2FA in Phase 1** (Filament admin keeps its own 2FA).
+- **Users have a `uuid`** (for the signed set-password route) and `password_set_at`.
 
 ---
 

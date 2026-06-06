@@ -16,9 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
         ]);
 
-        // No reseller-portal login route exists yet (deferred auth pass), so send
-        // unauthenticated web requests home rather than to a missing `login` route.
-        $middleware->redirectGuestsTo('/');
+        $middleware->redirectGuestsTo('/login');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

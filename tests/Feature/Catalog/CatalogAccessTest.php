@@ -34,7 +34,7 @@ function pendingReseller(): User
 }
 
 it('redirects a guest away from the catalog', function () {
-    $this->get('/catalog')->assertRedirect('/');
+    $this->get('/catalog')->assertRedirect('/login');
 });
 
 it('redirects a pending-company reseller', function () {
