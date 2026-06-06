@@ -12,6 +12,8 @@ use App\Domain\Onboarding\Policies\OnboardingApplicationPolicy;
 use App\Domain\Ordering\Events\OrderPlaced;
 use App\Domain\Ordering\Listeners\PushOrderToZoho;
 use App\Domain\Ordering\Listeners\SendOrderConfirmationEmail;
+use App\Domain\Ordering\Models\Order;
+use App\Domain\Ordering\Policies\OrderPolicy;
 use App\Models\User;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -28,6 +30,7 @@ class AppServiceProvider extends ServiceProvider
     private const POLICIES = [
         OnboardingApplication::class => OnboardingApplicationPolicy::class,
         Company::class => CompanyPolicy::class,
+        Order::class => OrderPolicy::class,
     ];
 
     /**

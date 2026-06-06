@@ -30,8 +30,8 @@ function logout(): void {
           </Link>
           <nav class="hidden items-center gap-4 text-sm sm:flex">
             <Link href="/catalog" class="text-foreground hover:text-primary">Catalogue</Link>
-            <!-- Placeholders — pages arrive in later passes. -->
-            <span class="cursor-not-allowed text-muted-foreground/50" title="Coming soon">Orders</span>
+            <Link href="/orders" class="text-foreground hover:text-primary">Orders</Link>
+            <!-- Invoices arrive with the Billing pass. -->
             <span class="cursor-not-allowed text-muted-foreground/50" title="Coming soon">Invoices</span>
           </nav>
         </div>

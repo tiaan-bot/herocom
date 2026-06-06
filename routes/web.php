@@ -8,6 +8,7 @@ use App\Http\Controllers\Web\CartController;
 use App\Http\Controllers\Web\CatalogController;
 use App\Http\Controllers\Web\CheckoutController;
 use App\Http\Controllers\Web\OnboardingApplicationController;
+use App\Http\Controllers\Web\OrderController;
 use App\Http\Middleware\EnsureApprovedReseller;
 use Illuminate\Support\Facades\Route;
 
@@ -43,6 +44,12 @@ Route::middleware(['auth', EnsureApprovedReseller::class])->group(function (): v
         Route::get('/catalog', [CatalogController::class, 'index'])->name('catalog.index');
         Route::get('/catalog/{product:uuid}', [CatalogController::class, 'show'])->name('catalog.show');
         Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
+    });
+
+    // My Orders (reseller-facing, scoped to the user's company).
+    Route::middleware('can:view_orders')->group(function (): void {
+        Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+        Route::get('/orders/{order:uuid}', [OrderController::class, 'show'])->name('orders.show');
     });
 
     // Mutating the cart + checking out needs place_orders (reseller_viewer is read-only).

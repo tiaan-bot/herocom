@@ -263,6 +263,19 @@ Domain root for auth actions: `app/Domain/Identity`; thin Web controllers under 
 
 ---
 
+## 6d. Ordering domain
+
+Domain root: `app/Domain/Ordering`. Cart → checkout → Order → Zoho Sales Order. Zoho stays the source of truth for the commercial documents; the Order is the portal-side record that produces a Zoho SO.
+
+- **Cart**: DB-backed, **one open cart per user** (partial unique index + `GetOrCreateOpenCart`), re-priced on read via `CompanyPriceCalculator`; inactive-product lines are flagged and excluded from checkout. Mutations gated by `place_orders`.
+- **Orders snapshot at placement** (`PlaceOrderAction`, in a transaction): immutable unit prices (list + discounted), line names/skus, and delivery address; `order_number` = `HD-######`; the cart is marked converted; `OrderPlaced` is raised. Catalog price changes never mutate a placed order. **No soft deletes** — orders are permanent.
+- **Statuses** (T&Cs offer/acceptance model): `placed → accepted → rejected/cancelled`. Acceptance is a manual Filament action in Phase 1.
+- **Zoho push state is separate from order status**: `zoho_push_status` (pending/pushed/failed) + unique `zoho_salesorder_id` (idempotency anchor). The `OrderPlaced` listeners are queued + idempotent: `PushOrderToZoho` (creates the Zoho **customer first** if the company lacks `zoho_customer_id`, via the shared `EnsureZohoCustomerAction`, then the SO at the **discounted** unit price) and `SendOrderConfirmationEmail`. Failed pushes retry and surface in Filament with a **Retry** action.
+- **No stock reservation, no credit-limit enforcement** in Phase 1 (Billing pass may add available-credit checks). Portal shows **ex-VAT**; Zoho computes VAT on the SO/invoice.
+- **Access**: portal `/orders`(+`/{uuid}`) gated `auth` + approved reseller + `view_orders`, scoped to the user's company (`OrderPolicy`). Filament `OrderResource` (internal, no create/edit) — Accept/Reject/Retry-push gated `manage_orders`.
+
+---
+
 ## 7. Zoho Integration Rules
 
 **Authentication:** **Self-client (server-to-server) OAuth 2.0** — no redirect flow. A one-time `zoho:authorize {grantToken}` exchanges a self-client grant token for a refresh token; `ZohoClient` (`app/Domain/Shared/Zoho`) auto-refreshes access tokens thereafter. `zoho_tokens` is a single-row, **encrypted** store (`refresh_token`, `access_token`); tokens are never logged. Token refresh is wrapped in a cache lock so parallel queued jobs don't double-refresh.
