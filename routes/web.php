@@ -20,7 +20,9 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [HomeController::class, 'index'])->name('marketing.home');
 Route::get('/products', [ProductsController::class, 'index'])->name('marketing.products');
 Route::get('/contact', [ContactController::class, 'show'])->name('marketing.contact');
-// POST /contact (marketing.contact.send) is wired in Pass 3.
+Route::post('/contact', [ContactController::class, 'send'])
+    ->middleware('throttle:marketing-contact') // 5/min/IP (see AppServiceProvider)
+    ->name('marketing.contact.send');
 
 // Reseller-portal auth (hand-wired Inertia; no self-registration — apply via /apply).
 Route::get('/login', [LoginController::class, 'create'])->name('login');

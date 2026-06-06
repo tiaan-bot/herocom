@@ -17,8 +17,11 @@ use App\Domain\Ordering\Listeners\SendOrderConfirmationEmail;
 use App\Domain\Ordering\Models\Order;
 use App\Domain\Ordering\Policies\OrderPolicy;
 use App\Models\User;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -64,5 +67,8 @@ class AppServiceProvider extends ServiceProvider
 
         Event::listen(OrderPlaced::class, PushOrderToZoho::class);
         Event::listen(OrderPlaced::class, SendOrderConfirmationEmail::class);
+
+        // Public marketing contact form: 5 submissions per minute per IP.
+        RateLimiter::for('marketing-contact', fn (Request $request): Limit => Limit::perMinute(5)->by((string) $request->ip()));
     }
 }

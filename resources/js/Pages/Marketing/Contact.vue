@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Head } from '@inertiajs/vue3'
+import { Head, useForm } from '@inertiajs/vue3'
 import { ArrowRight, Check, Clock, Mail, MapPin, Phone } from 'lucide-vue-next'
 import MarketingLayout from '@/Layouts/MarketingLayout.vue'
 import { Button } from '@/components/ui/button'
@@ -8,9 +8,31 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import FormField from '@/components/FormField.vue'
 
-// Pass 2 is static: this is the export's client-side success toggle (no network).
-// Pass 3 replaces it with a real Inertia POST → validation, honeypot, rate limit, queued mail.
 const sent = ref(false)
+
+const form = useForm({
+  name: '',
+  company: '',
+  email: '',
+  phone: '',
+  message: '',
+  website: '', // honeypot — must stay empty
+})
+
+function submit(): void {
+  form.post('/contact', {
+    preserveScroll: true,
+    onSuccess: () => {
+      sent.value = true
+      form.reset()
+    },
+  })
+}
+
+function reset(): void {
+  sent.value = false
+  form.clearErrors()
+}
 </script>
 
 <template>
@@ -31,22 +53,40 @@ const sent = ref(false)
               <div class="cform__senticon"><Check /></div>
               <h2 class="cform__senth">Message received</h2>
               <p>Thank you for reaching out. A member of our team will be in touch within one business day.</p>
-              <Button variant="outline" @click="sent = false">Send another message</Button>
+              <Button variant="outline" @click="reset">Send another message</Button>
             </div>
-            <form v-else class="cform__form" @submit.prevent="sent = true">
+            <form v-else class="cform__form" @submit.prevent="submit">
               <h2 class="cform__title">Send us a message</h2>
               <div class="cform__row">
-                <FormField label="Name" required><Input placeholder="Your full name" /></FormField>
-                <FormField label="Company"><Input placeholder="Business name" /></FormField>
+                <FormField label="Name" required :error="form.errors.name">
+                  <Input v-model="form.name" placeholder="Your full name" />
+                </FormField>
+                <FormField label="Company" :error="form.errors.company">
+                  <Input v-model="form.company" placeholder="Business name" />
+                </FormField>
               </div>
               <div class="cform__row">
-                <FormField label="Email" required><Input type="email" placeholder="you@business.co.za" /></FormField>
-                <FormField label="Phone"><Input placeholder="0XX XXX XXXX" /></FormField>
+                <FormField label="Email" required :error="form.errors.email">
+                  <Input v-model="form.email" type="email" placeholder="you@business.co.za" />
+                </FormField>
+                <FormField label="Phone" :error="form.errors.phone">
+                  <Input v-model="form.phone" placeholder="0XX XXX XXXX" />
+                </FormField>
               </div>
-              <FormField label="Message" required>
-                <Textarea :rows="5" placeholder="Tell us how we can help…" />
+              <FormField label="Message" required :error="form.errors.message">
+                <Textarea v-model="form.message" :rows="5" placeholder="Tell us how we can help…" />
               </FormField>
-              <Button type="submit" class="cform__submit">Send message <ArrowRight /></Button>
+              <!-- Honeypot: visually hidden, off-tab, never filled by humans. -->
+              <input
+                v-model="form.website"
+                type="text"
+                name="website"
+                tabindex="-1"
+                autocomplete="off"
+                aria-hidden="true"
+                class="hidden"
+              >
+              <Button type="submit" class="cform__submit" :disabled="form.processing">Send message <ArrowRight /></Button>
               <p class="cform__legal">Your information is processed in line with POPIA.</p>
             </form>
           </div>

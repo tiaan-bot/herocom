@@ -115,4 +115,15 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Marketing Contact Recipient
+    |--------------------------------------------------------------------------
+    |
+    | Destination for the public marketing site's contact form enquiries.
+    |
+    */
+
+    'marketing_contact_to' => env('MARKETING_CONTACT_TO', 'sales@herocom.co.za'),
+
 ];
