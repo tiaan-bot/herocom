@@ -20,6 +20,11 @@ final class ZohoException extends RuntimeException
         return new self("Zoho token request failed: {$code}.");
     }
 
+    public static function missing(string $field): self
+    {
+        return new self("Zoho response missing expected field: {$field}.");
+    }
+
     public static function fromResponse(Response $response): self
     {
         $body = $response->json();

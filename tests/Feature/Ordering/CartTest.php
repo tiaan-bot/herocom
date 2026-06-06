@@ -17,15 +17,6 @@ beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
 });
 
-function buyer(float $discount = 0.0): User
-{
-    $company = Company::factory()->approved()->create(['discount_percent' => $discount]);
-    $user = User::factory()->create(['company_id' => $company->id]);
-    $user->assignRole('reseller_buyer'); // has view_catalog + place_orders
-
-    return $user;
-}
-
 it('adds a product to the cart', function () {
     $buyer = buyer();
     $product = Product::factory()->create();

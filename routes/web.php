@@ -6,6 +6,7 @@ use App\Http\Controllers\Web\Auth\ResetPasswordController;
 use App\Http\Controllers\Web\Auth\SetPasswordController;
 use App\Http\Controllers\Web\CartController;
 use App\Http\Controllers\Web\CatalogController;
+use App\Http\Controllers\Web\CheckoutController;
 use App\Http\Controllers\Web\OnboardingApplicationController;
 use App\Http\Middleware\EnsureApprovedReseller;
 use Illuminate\Support\Facades\Route;
@@ -44,10 +45,14 @@ Route::middleware(['auth', EnsureApprovedReseller::class])->group(function (): v
         Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
     });
 
-    // Mutating the cart needs place_orders (reseller_viewer is read-only).
+    // Mutating the cart + checking out needs place_orders (reseller_viewer is read-only).
     Route::middleware('can:place_orders')->group(function (): void {
         Route::post('/cart', [CartController::class, 'store'])->name('cart.store');
         Route::patch('/cart/items/{cartItem}', [CartController::class, 'update'])->name('cart.items.update');
         Route::delete('/cart/items/{cartItem}', [CartController::class, 'destroy'])->name('cart.items.destroy');
+
+        Route::get('/checkout', [CheckoutController::class, 'create'])->name('checkout');
+        Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
+        Route::get('/checkout/success', [CheckoutController::class, 'success'])->name('checkout.success');
     });
 });

@@ -86,6 +86,38 @@ final class ZohoClient
     }
 
     /**
+     * Create a Zoho Books contact (customer). Returns the `contact` payload.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function createContact(array $data): array
+    {
+        $json = $this->request('POST', '/books/v3/contacts', [], $data);
+
+        /** @var array<string, mixed> $contact */
+        $contact = $json['contact'] ?? $json;
+
+        return $contact;
+    }
+
+    /**
+     * Create a Zoho Books sales order. Returns the `salesorder` payload.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function createSalesOrder(array $data): array
+    {
+        $json = $this->request('POST', '/books/v3/salesorders', [], $data);
+
+        /** @var array<string, mixed> $salesOrder */
+        $salesOrder = $json['salesorder'] ?? $json;
+
+        return $salesOrder;
+    }
+
+    /**
      * Generic authenticated Books API call. Ensures a valid token, attaches the
      * Authorization header + organization_id, retries on 429/5xx with backoff.
      *

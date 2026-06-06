@@ -9,6 +9,9 @@ use App\Domain\Onboarding\Models\Company;
 use App\Domain\Onboarding\Models\OnboardingApplication;
 use App\Domain\Onboarding\Policies\CompanyPolicy;
 use App\Domain\Onboarding\Policies\OnboardingApplicationPolicy;
+use App\Domain\Ordering\Events\OrderPlaced;
+use App\Domain\Ordering\Listeners\PushOrderToZoho;
+use App\Domain\Ordering\Listeners\SendOrderConfirmationEmail;
 use App\Models\User;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -52,5 +55,8 @@ class AppServiceProvider extends ServiceProvider
 
         Event::listen(CompanyApproved::class, PushCompanyToZoho::class);
         Event::listen(CompanyApproved::class, SendWelcomeEmail::class);
+
+        Event::listen(OrderPlaced::class, PushOrderToZoho::class);
+        Event::listen(OrderPlaced::class, SendOrderConfirmationEmail::class);
     }
 }

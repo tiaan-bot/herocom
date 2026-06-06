@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Onboarding\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -52,6 +53,19 @@ function userWithRole(string $role): User
 {
     $user = User::factory()->create();
     $user->assignRole($role);
+
+    return $user;
+}
+
+/**
+ * An approved-company reseller_buyer (view_catalog + place_orders). Requires the
+ * RolePermissionSeeder to have run.
+ */
+function buyer(float $discount = 0.0): User
+{
+    $company = Company::factory()->approved()->create(['discount_percent' => $discount]);
+    $user = User::factory()->create(['company_id' => $company->id]);
+    $user->assignRole('reseller_buyer');
 
     return $user;
 }
