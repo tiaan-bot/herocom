@@ -46,4 +46,9 @@ class ProductFactory extends Factory
     {
         return $this->state(fn (): array => ['stock_on_hand' => 0]);
     }
+
+    public function featured(): static
+    {
+        return $this->state(fn (): array => ['is_featured' => true]);
+    }
 }

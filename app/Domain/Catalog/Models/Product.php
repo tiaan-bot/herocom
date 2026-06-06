@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $brand
  * @property string|null $category
  * @property ProductStatus $status
+ * @property bool $is_featured
  */
 class Product extends Model
 {
@@ -43,6 +44,7 @@ class Product extends Model
         'category',
         'image_url',
         'status',
+        'is_featured',
         'zoho_last_modified_at',
         'last_synced_at',
     ];
@@ -56,6 +58,7 @@ class Product extends Model
             'rate' => 'decimal:4',
             'stock_on_hand' => 'decimal:2',
             'status' => ProductStatus::class,
+            'is_featured' => 'boolean',
             'zoho_last_modified_at' => 'datetime',
             'last_synced_at' => 'datetime',
         ];
@@ -67,6 +70,14 @@ class Product extends Model
     public function scopeActive(Builder $query): void
     {
         $query->where('status', ProductStatus::Active);
+    }
+
+    /**
+     * @param  Builder<Product>  $query
+     */
+    public function scopeFeatured(Builder $query): void
+    {
+        $query->where('is_featured', true);
     }
 
     protected static function newFactory(): ProductFactory
