@@ -243,7 +243,7 @@ Domain root: `app/Domain/Onboarding` (Models, Enums, plus Actions/Services/Event
 Domain root: `app/Domain/Catalog`. The `products` table is a **read-optimised one-way mirror** of Zoho Books items — Zoho is the source of truth; **no product editing anywhere** in our admin or portal.
 
 - **Sync** (`SyncProductsFromZoho` + `SyncZohoProducts` job): upsert by the unique `zoho_item_id` (idempotent); a full sync marks items missing from Zoho **inactive** (never deleted). `zoho:sync-products {--full}` for manual runs; scheduled incremental every 30 min + nightly full. Queued, retry-safe. Inactive items stay (so order history can reference them) but are **hidden from the portal**.
-- **Sync admin**: Filament `CatalogSync` page (gated `manage_catalog_sync`) shows counts/last-synced and a "Sync now" button. `manage_catalog_sync` is currently held only by super_admin (no role grant in the matrix yet).
+- **Sync admin**: the Filament `ZohoSync` page (gated `manage_catalog_sync`) shows product + invoice counts/last-synced and queues a full sync of either (shared with Billing — see §6e). `manage_catalog_sync` is currently held only by super_admin (no role grant in the matrix yet).
 - **Pricing**: computed at render by `CompanyPriceCalculator` (list `rate` − company `discount_percent`), **ex VAT**, never stored, never client-trusted. The Phase 3 tier engine replaces only this class.
 - **Stock**: shown as a band (`StockBand`: in/low/out, low ≤ `config('catalog.low_stock_threshold')`, default 5), never the exact quantity.
 - **Search**: Postgres `LOWER(col) LIKE` (portable case-insensitive) over name/sku/brand — Scout + Meilisearch is a deferred drop-in for large catalogues (10k+ SKUs).
@@ -306,22 +306,22 @@ Domain root: `app/Domain/Billing`. **Invoices are owned by Zoho Books** — we m
 | Invoices | Zoho | Zoho → Laravel only |
 | Payments | Zoho | Zoho → Laravel only |
 
-**Webhooks in (Zoho → us):**
-- Endpoint: `POST /webhooks/zoho/{event}`
-- Verify HMAC signature against `ZOHO_WEBHOOK_SECRET`
-- Dispatch `Process{Entity}WebhookJob` to Horizon — never process inline
-- Store raw payload in `webhook_logs` table for debugging/replay
+**Inbound sync — current state (Phase 1): polling only.** No Zoho webhooks are wired yet. Scheduled queued jobs pull from Zoho on a fixed cadence (see `routes/console.php`), all `withoutOverlapping()`:
+- Products: `SyncZohoProducts` incremental every 30 min + full nightly at 02:00.
+- Invoices: `SyncZohoInvoices` incremental every 30 min + full nightly at 02:30.
+- Incremental runs filter by the max `zoho_last_modified_at` already stored; full runs reconcile the whole set. Idempotent via `zoho_*_id` unique constraints. No `salesorders` polling — sales orders are push-only (see direction table).
 
-**Polling fallback:** scheduled job every 60s polls Zoho for `items` and `salesorders` updated in the last 5 minutes. Catches missed webhooks. Idempotent via `zoho_*_id` unique constraints.
+**Webhooks in (Zoho → us) — DEFERRED (Phase 2).** Not implemented yet; the polling above is the only inbound path in Phase 1. The intended design when added:
+- Endpoint: `POST /webhooks/zoho/{event}`; verify HMAC against `ZOHO_WEBHOOK_SECRET`.
+- Dispatch `Process{Entity}WebhookJob` to Horizon — never process inline; upsert on `zoho_*_id`.
+- Store the raw payload in a `webhook_logs` table for debugging/replay.
 
 **Outbound (us → Zoho):**
-- All writes go through `ZohoClient` (`app/Domain/Shared/Zoho`) and the owning domain's sync services, never raw HTTP from controllers/actions
-- Every outbound write is a queued job with `tries=5`, `backoff=[10, 60, 300, 900, 3600]`
-- On final failure, raise `ZohoSyncFailed` event → admin notification
+- All writes go through `ZohoClient` (`app/Domain/Shared/Zoho`) and the owning domain's sync services/listeners, never raw HTTP from controllers/actions.
+- Every outbound write is a queued job with `tries=5` and a backoff schedule (e.g. `PushOrderToZoho`). It checks for an existing `zoho_*_id` before creating (idempotent).
+- On final failure the job's `failed()` handler logs the error. A dedicated `ZohoSyncFailed` event → admin notification is **deferred** (not yet implemented).
 
-**Idempotency:** every outbound job checks for an existing `zoho_*_id` before creating. Every inbound webhook upserts on `zoho_*_id`.
-
-**Rate limiting:** Zoho's limit is 5000 calls/day. Wrap `ZohoClient` with a Redis-backed rate limiter; queue jobs back off on 429.
+**Rate limiting:** Zoho's limit is 5000 calls/day. Currently `ZohoClient` only retries on `429`/`5xx` with exponential backoff honouring `Retry-After`; a dedicated Redis-backed call-rate limiter is **deferred**.
 
 ---
 
@@ -341,6 +341,11 @@ Roles managed via `spatie/laravel-permission`. Initial roles:
 - `reseller_owner` — full access to their Company's account, can invite users
 - `reseller_buyer` — can browse, order, log tickets
 - `reseller_viewer` — read-only (e.g. accountant viewing statements)
+
+The descriptions above are the **target** abilities. The roles all exist (`RolePermissionSeeder`, idempotent), but the seeded matrix only grants permissions that have been built so far. The 12 permissions currently defined: `view/process/approve_onboarding_applications`, `view_catalog`, `manage_catalog_sync`, `place_orders`, `view_orders`, `manage_orders`, `view_invoices`, `manage_company_credit`, `manage_internal_users`, `manage_company_users`. Notes:
+- **`warranty_admin` and `support_agent` are currently granted nothing** — their ticket/warranty/RMA abilities arrive with the Phase 2 Ticketing domain, which hasn't been built.
+- **`super_admin` is granted nothing explicitly** — it bypasses all checks via the `Gate::before` in `AppServiceProvider`.
+- `manage_catalog_sync` and `manage_internal_users` are defined but granted to no role yet (effectively super_admin-only).
 
 **Audit rule:** every role assignment, role change, and any action by `super_admin` against another user is logged via activitylog with reason field required.
 
@@ -460,4 +465,4 @@ When working on a task, identify which Phase it belongs to and don't pull in sco
 
 ---
 
-*Last updated: Phase 0 complete (per HEROCOM_PHASE_1_HANDOVER.md §7) — confirmed stack is Laravel 12 / Filament v4 / Tailwind 4 / Pest 4 / PHP 8.4; Redis via predis on dev + phpredis in prod; Horizon is prod-only (Windows can't run it, use `queue:work` locally); activitylog v5 API notes added; front-end is hand-wired Inertia 2 + Vue 3 (not the starter kit). Next: Phase 1.*
+*Last updated: Phase 1 in progress. Built and committed so far: Zoho foundation (self-client OAuth, `ZohoClient`, `zoho:authorize`/`zoho:ping`); Onboarding (data + behaviour + Filament admin + public `/apply` wizard, §6a); Reseller portal auth (hand-wired Inertia, set-password flow, §6c); Catalog (one-way product mirror + gated `/catalog`, §6b); Ordering (cart → checkout → Order → Zoho SO push, My Orders + admin, §6d); Billing (one-way invoice mirror + portal `/invoices` with Zoho pay link, §6e). Inbound Zoho sync is **polling-only** (scheduled jobs); webhooks, the `ZohoSyncFailed`→admin-notification path, and a Redis rate limiter are deferred (see §7). Not yet built: Ticketing/warranty/RMA (Phase 2) — so `app/Domain/Ticketing`, the `Api/` controllers, and the `warranty_admin`/`support_agent` permissions don't exist yet. Stack: Laravel 12 / Filament v4 / Tailwind 4 / Pest 4 / PHP 8.4 (composer `php` constraint is `^8.2`); Redis via predis on dev + phpredis in prod; Horizon is prod-only (use `queue:work` locally).*
