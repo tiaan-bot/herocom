@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $uuid
@@ -21,8 +22,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $zoho_invoice_id
  * @property string $invoice_number
  * @property InvoiceStatus $status
- * @property \Illuminate\Support\Carbon $invoice_date
- * @property \Illuminate\Support\Carbon|null $due_date
+ * @property Carbon $invoice_date
+ * @property Carbon|null $due_date
  * @property string $subtotal_ex_vat
  * @property string $tax_total
  * @property string $total

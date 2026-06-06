@@ -2,6 +2,9 @@
 
 @import "tw-animate-css";
 
+/* Public marketing pages — tokens scoped to .mkt-root, portal theme untouched. */
+@import './marketing.css';
+
 @custom-variant dark (&:is(.dark *));
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';

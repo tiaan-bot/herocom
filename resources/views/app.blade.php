@@ -7,6 +7,10 @@
 
     <title inertia>{{ config('app.name', 'Herocom Distribution') }}</title>
 
+    {{-- Preload the marketing hero display font (Smooth Circulars). Aspira + the
+         rest are self-hosted via @font-face in the marketing CSS scope. --}}
+    <link rel="preload" href="/fonts/marketing/smooth-circulars.otf" as="font" type="font/otf" crossorigin>
+
     @vite(['resources/css/app.css', 'resources/js/app.ts'])
     @inertiaHead
 </head>
