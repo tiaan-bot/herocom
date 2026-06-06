@@ -34,8 +34,11 @@ class AdminPanelProvider extends PanelProvider
                     ->recoverable(),
             ])
             ->colors([
-                'primary' => Color::Amber,
+                'primary' => Color::hex('#733DA0'),
             ])
+            ->brandLogo(asset('images/brand/wordmark-full-color.png'))
+            ->brandLogoHeight('2rem')
+            ->favicon(asset('images/brand/nexus-mark.png'))
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([

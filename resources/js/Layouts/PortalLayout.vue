@@ -25,8 +25,7 @@ function logout(): void {
       <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
         <div class="flex items-center gap-6">
           <Link href="/catalog" class="flex items-center gap-2 font-semibold tracking-tight">
-            <span class="grid size-7 place-items-center rounded-md bg-primary text-sm text-primary-foreground">H</span>
-            Herocom Distribution
+            <img src="/images/brand/wordmark-full-color.png" alt="Herocom Distribution" class="h-7 w-auto">
           </Link>
           <nav class="hidden items-center gap-4 text-sm sm:flex">
             <Link href="/catalog" class="text-foreground hover:text-primary">Catalogue</Link>

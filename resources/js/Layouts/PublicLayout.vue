@@ -7,8 +7,7 @@ import { Link } from '@inertiajs/vue3'
     <header class="border-b bg-background">
       <div class="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
         <Link href="/" class="flex items-center gap-2 font-semibold tracking-tight">
-          <span class="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground text-sm">H</span>
-          Herocom Distribution
+          <img src="/images/brand/wordmark-full-color.png" alt="Herocom Distribution" class="h-7 w-auto">
         </Link>
         <span class="text-sm text-muted-foreground">Reseller onboarding</span>
       </div>

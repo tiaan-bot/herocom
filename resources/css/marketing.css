@@ -27,17 +27,9 @@
 @font-face { font-family: "Smooth Circulars"; src: url("/fonts/marketing/smooth-circulars.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
 
 .mkt-root {
-  /* Brand */
-  --primary: #733DA0;            /* Heroic Purple */
-  --primary-foreground: #ffffff; /* Electric White */
-
-  /* Purple scale */
-  --purple-50:  #f6f1fb;
-  --purple-100: #ece1f6;
-  --purple-200: #d7c2ec;
-  --purple-300: #bd9bdd;
-  --purple-500: #9a5fc9;
-  --purple-900: #3c1f59;
+  /* Brand primary (#733DA0) + the purple scale are now shared :root tokens
+     (app.css); the marketing layer inherits them. Marketing-only layout tokens
+     stay scoped here. */
 
   /* Neutrals (light canvas, near-black ink) */
   --background: #ffffff;
@@ -61,9 +53,8 @@
   --success-bg: #e9f7ef;
   --success-fg: #1f7a4d;
 
-  /* Typography — self-hosted Aspira (body/headings) + Smooth Circulars (hero
-     display only); Poppins kept only as the geometric-sans fallback (spec §5). */
-  --font-sans: "Aspira", "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Typography — --font-sans (Aspira) is now a shared :root token (app.css).
+     Smooth Circulars stays marketing-only, for the hero display headline. */
   --font-display: "Smooth Circulars", "Aspira", "Poppins", system-ui, sans-serif;
   --weight-medium: 500;
   --weight-bold: 700;

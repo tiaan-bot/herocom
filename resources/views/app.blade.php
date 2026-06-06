@@ -7,6 +7,10 @@
 
     <title inertia>{{ config('app.name', 'Herocom Distribution') }}</title>
 
+    <link rel="icon" type="image/png" href="/images/brand/nexus-mark.png">
+    <link rel="apple-touch-icon" href="/images/brand/nexus-mark.png">
+
+
     {{-- Preload the marketing hero display font (Smooth Circulars). Aspira + the
          rest are self-hosted via @font-face in the marketing CSS scope. --}}
     <link rel="preload" href="/fonts/marketing/smooth-circulars.otf" as="font" type="font/otf" crossorigin>
