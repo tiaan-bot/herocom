@@ -8,14 +8,19 @@ use App\Http\Controllers\Web\CartController;
 use App\Http\Controllers\Web\CatalogController;
 use App\Http\Controllers\Web\CheckoutController;
 use App\Http\Controllers\Web\InvoiceController;
+use App\Http\Controllers\Web\Marketing\ContactController;
 use App\Http\Controllers\Web\Marketing\HomeController;
+use App\Http\Controllers\Web\Marketing\ProductsController;
 use App\Http\Controllers\Web\OnboardingApplicationController;
 use App\Http\Controllers\Web\OrderController;
 use App\Http\Middleware\EnsureApprovedReseller;
 use Illuminate\Support\Facades\Route;
 
-// Public marketing site (Pass 1: Home). Products/Contact arrive in later passes.
+// Public marketing site (Pass 1: Home; Pass 2: Products + Contact, static).
 Route::get('/', [HomeController::class, 'index'])->name('marketing.home');
+Route::get('/products', [ProductsController::class, 'index'])->name('marketing.products');
+Route::get('/contact', [ContactController::class, 'show'])->name('marketing.contact');
+// POST /contact (marketing.contact.send) is wired in Pass 3.
 
 // Reseller-portal auth (hand-wired Inertia; no self-registration — apply via /apply).
 Route::get('/login', [LoginController::class, 'create'])->name('login');
