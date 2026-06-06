@@ -102,7 +102,9 @@ app/
 │   ├── Billing/            # Invoices, payments, statements, credit
 │   ├── Ticketing/          # Tickets, messages, warranty claims, RMA
 │   ├── Identity/           # Users, roles, permissions, sessions
-│   └── Shared/             # Cross-domain value objects, enums
+│   └── Shared/             # Cross-domain value objects, enums, concerns
+│       ├── Concerns/       # e.g. HasUuid
+│       └── Zoho/           # ZohoClient, ZohoException, Models/ZohoToken (shared Zoho infra)
 ├── Filament/               # Admin panel resources, pages, widgets
 ├── Http/
 │   ├── Controllers/
@@ -110,15 +112,13 @@ app/
 │   │   └── Api/            # API endpoints (future POS integration, mobile)
 │   ├── Requests/           # Form Request classes
 │   └── Middleware/
-├── Services/
-│   └── Zoho/               # ZohoClient, ProductSync, OrderSync, etc.
-│       ├── ZohoClient.php
-│       ├── ProductSyncService.php
-│       ├── OrderSyncService.php
-│       ├── InvoiceSyncService.php
-│       └── Webhooks/
 ├── Providers/
 └── Support/                # Helpers, traits, macros
+
+# Zoho: the shared client lives in app/Domain/Shared/Zoho (ZohoClient, ZohoException,
+# Models/ZohoToken). Domain-specific sync (products, orders, invoices) + webhook
+# handling live in the owning domain (e.g. app/Domain/Catalog/Services), not a central
+# app/Services/Zoho — persistence belongs to each domain.
 
 database/
 ├── migrations/
@@ -240,7 +240,11 @@ Domain root: `app/Domain/Onboarding` (Models, Enums, plus Actions/Services/Event
 
 ## 7. Zoho Integration Rules
 
-**Authentication:** OAuth 2.0, refresh token stored encrypted in `zoho_tokens` table. `ZohoClient` handles auto-refresh.
+**Authentication:** **Self-client (server-to-server) OAuth 2.0** — no redirect flow. A one-time `zoho:authorize {grantToken}` exchanges a self-client grant token for a refresh token; `ZohoClient` (`app/Domain/Shared/Zoho`) auto-refreshes access tokens thereafter. `zoho_tokens` is a single-row, **encrypted** store (`refresh_token`, `access_token`); tokens are never logged. Token refresh is wrapped in a cache lock so parallel queued jobs don't double-refresh.
+
+**Foundation vs persistence:** the Zoho foundation proves connectivity only — `zoho:authorize` (one-time setup) and `zoho:ping` (fetches the org + a page of items). **It does not persist Zoho data; persistence lives in each domain — Catalog first.** Methods: `getOrganization()`, `listItems()`, and a generic `request()` others build on.
+
+**Config & resilience:** region-driven base URLs from `config/zoho.php` (`ZOHO_REGION` → `accounts_domain` + `api_domain`; never hard-code a data centre) plus `organization_id` attached to Books calls. `ZohoClient` retries on `429`/`5xx` with exponential backoff, honours `Retry-After`, has a sane timeout, and throws a typed `ZohoException` on non-retryable failures. **Never log tokens or secrets.**
 
 **Direction of truth:**
 
@@ -262,7 +266,7 @@ Domain root: `app/Domain/Onboarding` (Models, Enums, plus Actions/Services/Event
 **Polling fallback:** scheduled job every 60s polls Zoho for `items` and `salesorders` updated in the last 5 minutes. Catches missed webhooks. Idempotent via `zoho_*_id` unique constraints.
 
 **Outbound (us → Zoho):**
-- All writes go through `Services/Zoho/*` services, never raw HTTP from controllers/actions
+- All writes go through `ZohoClient` (`app/Domain/Shared/Zoho`) and the owning domain's sync services, never raw HTTP from controllers/actions
 - Every outbound write is a queued job with `tries=5`, `backoff=[10, 60, 300, 900, 3600]`
 - On final failure, raise `ZohoSyncFailed` event → admin notification
 
@@ -301,7 +305,7 @@ Roles managed via `spatie/laravel-permission`. Initial roles:
 - **HTTP fakes** for all Zoho/Postmark/PayFast interactions — never hit real APIs in tests.
 - **Database:** use `RefreshDatabase` trait with Postgres in CI.
 - **Factories** for every model. Tests build their own state, never rely on seeders.
-- **Coverage target:** 80%+ on `app/Domain/*` and `app/Services/Zoho/*`. Controllers and Filament resources covered by feature tests.
+- **Coverage target:** 80%+ on `app/Domain/*` (includes the shared Zoho client in `app/Domain/Shared/Zoho`). Controllers and Filament resources covered by feature tests.
 - Run `composer test` before every commit. CI blocks merge if tests fail.
 
 ---
@@ -326,10 +330,9 @@ php artisan migrate:fresh --seed
 php artisan db:seed --class=DevelopmentSeeder
 
 # Zoho
-php artisan zoho:auth                   # one-time OAuth handshake
-php artisan zoho:sync products          # manual full product sync
-php artisan zoho:sync inventory         # manual stock pull
-php artisan zoho:webhook-replay {id}    # replay a logged webhook
+php artisan zoho:authorize {grantToken} # one-time self-client grant → refresh token
+php artisan zoho:ping                    # prove connectivity (org + a page of items)
+# Future (Catalog+ passes): zoho:sync products / inventory, zoho:webhook-replay {id}
 
 # Filament (v4)
 php artisan make:filament-resource {Name}

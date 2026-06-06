@@ -23,6 +23,9 @@ use Illuminate\Support\Facades\Storage;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
+    // Pin the document disk so the test is independent of the ambient .env
+    // (dev sets ONBOARDING_DOCUMENT_DISK=local).
+    config(['onboarding.documents.disk' => 'r2']);
     Storage::fake('r2');
 });
 

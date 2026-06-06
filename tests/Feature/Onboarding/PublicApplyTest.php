@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\Storage;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
+    // Pin the document disk so uploads hit the faked r2, not the ambient dev disk.
+    config(['onboarding.documents.disk' => 'r2']);
     Storage::fake('r2');
     Notification::fake();
 });
