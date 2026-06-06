@@ -238,6 +238,19 @@ Domain root: `app/Domain/Onboarding` (Models, Enums, plus Actions/Services/Event
 
 ---
 
+## 6b. Catalog domain
+
+Domain root: `app/Domain/Catalog`. The `products` table is a **read-optimised one-way mirror** of Zoho Books items — Zoho is the source of truth; **no product editing anywhere** in our admin or portal.
+
+- **Sync** (`SyncProductsFromZoho` + `SyncZohoProducts` job): upsert by the unique `zoho_item_id` (idempotent); a full sync marks items missing from Zoho **inactive** (never deleted). `zoho:sync-products {--full}` for manual runs; scheduled incremental every 30 min + nightly full. Queued, retry-safe. Inactive items stay (so order history can reference them) but are **hidden from the portal**.
+- **Sync admin**: Filament `CatalogSync` page (gated `manage_catalog_sync`) shows counts/last-synced and a "Sync now" button. `manage_catalog_sync` is currently held only by super_admin (no role grant in the matrix yet).
+- **Pricing**: computed at render by `CompanyPriceCalculator` (list `rate` − company `discount_percent`), **ex VAT**, never stored, never client-trusted. The Phase 3 tier engine replaces only this class.
+- **Stock**: shown as a band (`StockBand`: in/low/out, low ≤ `config('catalog.low_stock_threshold')`, default 5), never the exact quantity.
+- **Search**: Postgres `LOWER(col) LIKE` (portable case-insensitive) over name/sku/brand — Scout + Meilisearch is a deferred drop-in for large catalogues (10k+ SKUs).
+- **Catalog access** (`/catalog`, `/catalog/{uuid}`): `auth` + `EnsureApprovedReseller` (reseller must belong to an `approved` company; internal staff with no company pass) + `can:view_catalog`. No cart yet (Ordering pass).
+
+---
+
 ## 7. Zoho Integration Rules
 
 **Authentication:** **Self-client (server-to-server) OAuth 2.0** — no redirect flow. A one-time `zoho:authorize {grantToken}` exchanges a self-client grant token for a refresh token; `ZohoClient` (`app/Domain/Shared/Zoho`) auto-refreshes access tokens thereafter. `zoho_tokens` is a single-row, **encrypted** store (`refresh_token`, `access_token`); tokens are never logged. Token refresh is wrapped in a cache lock so parallel queued jobs don't double-refresh.
