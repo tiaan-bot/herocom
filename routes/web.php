@@ -4,6 +4,7 @@ use App\Http\Controllers\Web\Auth\ForgotPasswordController;
 use App\Http\Controllers\Web\Auth\LoginController;
 use App\Http\Controllers\Web\Auth\ResetPasswordController;
 use App\Http\Controllers\Web\Auth\SetPasswordController;
+use App\Http\Controllers\Web\CartController;
 use App\Http\Controllers\Web\CatalogController;
 use App\Http\Controllers\Web\OnboardingApplicationController;
 use App\Http\Middleware\EnsureApprovedReseller;
@@ -34,8 +35,19 @@ Route::post('/apply', [OnboardingApplicationController::class, 'store'])
     ->name('apply.store');
 Route::inertia('/apply/success', 'Onboarding/Success')->name('apply.success');
 
-// Gated catalog: authenticated + approved reseller (or internal staff) + view_catalog.
-Route::middleware(['auth', EnsureApprovedReseller::class, 'can:view_catalog'])->group(function (): void {
-    Route::get('/catalog', [CatalogController::class, 'index'])->name('catalog.index');
-    Route::get('/catalog/{product:uuid}', [CatalogController::class, 'show'])->name('catalog.show');
+// Gated portal: authenticated + approved reseller (or internal staff).
+Route::middleware(['auth', EnsureApprovedReseller::class])->group(function (): void {
+    // Browsing the catalogue + viewing the cart needs view_catalog.
+    Route::middleware('can:view_catalog')->group(function (): void {
+        Route::get('/catalog', [CatalogController::class, 'index'])->name('catalog.index');
+        Route::get('/catalog/{product:uuid}', [CatalogController::class, 'show'])->name('catalog.show');
+        Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
+    });
+
+    // Mutating the cart needs place_orders (reseller_viewer is read-only).
+    Route::middleware('can:place_orders')->group(function (): void {
+        Route::post('/cart', [CartController::class, 'store'])->name('cart.store');
+        Route::patch('/cart/items/{cartItem}', [CartController::class, 'update'])->name('cart.items.update');
+        Route::delete('/cart/items/{cartItem}', [CartController::class, 'destroy'])->name('cart.items.destroy');
+    });
 });

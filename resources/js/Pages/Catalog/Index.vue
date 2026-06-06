@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
-import { Head, Link, router } from '@inertiajs/vue3'
-import { Package, Search } from 'lucide-vue-next'
+import { computed, reactive, watch } from 'vue'
+import { Head, Link, router, usePage } from '@inertiajs/vue3'
+import { Package, Plus, Search } from 'lucide-vue-next'
 import PortalLayout from '@/Layouts/PortalLayout.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -83,6 +83,16 @@ const STOCK: Record<StockBandValue, { label: string; class: string }> = {
 function money(value: number, currency: string): string {
   return `${currency} ${value.toFixed(2)}`
 }
+
+const page = usePage()
+const canPlaceOrders = computed(() => {
+  const auth = page.props.auth as { user: { can?: { place_orders?: boolean } } | null } | undefined
+  return auth?.user?.can?.place_orders ?? false
+})
+
+function addToCart(uuid: string): void {
+  router.post('/cart', { product: uuid, quantity: 1 }, { preserveScroll: true, preserveState: true })
+}
 </script>
 
 <template>
@@ -135,25 +145,33 @@ function money(value: number, currency: string): string {
 
     <!-- Grid -->
     <div v-if="products.data.length" class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-      <Link
+      <div
         v-for="product in products.data" :key="product.uuid"
-        :href="`/catalog/${product.uuid}`"
-        class="group rounded-lg border bg-background p-3 transition-shadow hover:shadow-md"
+        class="group flex flex-col rounded-lg border bg-background p-3 transition-shadow hover:shadow-md"
       >
-        <div class="mb-3 grid aspect-square place-items-center overflow-hidden rounded-md bg-muted">
-          <img v-if="product.image_url" :src="product.image_url" :alt="product.name" class="h-full w-full object-cover" />
-          <Package v-else class="size-10 text-muted-foreground/40" />
-        </div>
-        <span :class="['inline-block rounded px-1.5 py-0.5 text-xs font-medium', STOCK[product.stock_band].class]">
-          {{ STOCK[product.stock_band].label }}
-        </span>
-        <h2 class="mt-2 line-clamp-2 text-sm font-medium group-hover:text-primary">{{ product.name }}</h2>
-        <p class="text-xs text-muted-foreground">{{ product.sku }}<span v-if="product.brand"> · {{ product.brand }}</span></p>
-        <div class="mt-2">
-          <p class="text-xs text-muted-foreground line-through">{{ money(product.list_price, product.currency) }}</p>
-          <p class="font-semibold">{{ money(product.your_price, product.currency) }} <span class="text-xs font-normal text-muted-foreground">your price</span></p>
-        </div>
-      </Link>
+        <Link :href="`/catalog/${product.uuid}`" class="flex flex-1 flex-col">
+          <div class="mb-3 grid aspect-square place-items-center overflow-hidden rounded-md bg-muted">
+            <img v-if="product.image_url" :src="product.image_url" :alt="product.name" class="h-full w-full object-cover" />
+            <Package v-else class="size-10 text-muted-foreground/40" />
+          </div>
+          <span :class="['inline-block rounded px-1.5 py-0.5 text-xs font-medium', STOCK[product.stock_band].class]">
+            {{ STOCK[product.stock_band].label }}
+          </span>
+          <h2 class="mt-2 line-clamp-2 text-sm font-medium group-hover:text-primary">{{ product.name }}</h2>
+          <p class="text-xs text-muted-foreground">{{ product.sku }}<span v-if="product.brand"> · {{ product.brand }}</span></p>
+          <div class="mt-2">
+            <p v-if="product.list_price > product.your_price" class="text-xs text-muted-foreground line-through">{{ money(product.list_price, product.currency) }}</p>
+            <p class="font-semibold">{{ money(product.your_price, product.currency) }} <span class="text-xs font-normal text-muted-foreground">your price</span></p>
+          </div>
+        </Link>
+        <Button
+          v-if="canPlaceOrders"
+          type="button" variant="secondary" size="sm" class="mt-3"
+          @click="addToCart(product.uuid)"
+        >
+          <Plus class="size-4" /> Add to cart
+        </Button>
+      </div>
     </div>
     <div v-else class="rounded-lg border bg-background p-12 text-center text-muted-foreground">
       No products match your filters.

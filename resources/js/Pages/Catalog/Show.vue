@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3'
-import { ArrowLeft, Package } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import { Head, Link, router, usePage } from '@inertiajs/vue3'
+import { ArrowLeft, Package, Plus } from 'lucide-vue-next'
 import PortalLayout from '@/Layouts/PortalLayout.vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 type StockBandValue = 'in_stock' | 'low_stock' | 'out_of_stock'
 
@@ -20,7 +23,7 @@ interface ProductDetail {
   description: string | null
 }
 
-defineProps<{ product: ProductDetail }>()
+const props = defineProps<{ product: ProductDetail }>()
 
 const STOCK: Record<StockBandValue, { label: string; class: string }> = {
   in_stock: { label: 'In stock', class: 'bg-green-100 text-green-800' },
@@ -30,6 +33,18 @@ const STOCK: Record<StockBandValue, { label: string; class: string }> = {
 
 function money(value: number, currency: string): string {
   return `${currency} ${value.toFixed(2)}`
+}
+
+const page = usePage()
+const canPlaceOrders = computed(() => {
+  const auth = page.props.auth as { user: { can?: { place_orders?: boolean } } | null } | undefined
+  return auth?.user?.can?.place_orders ?? false
+})
+
+const quantity = ref(1)
+
+function addToCart(): void {
+  router.post('/cart', { product: props.product.uuid, quantity: quantity.value }, { preserveScroll: true })
 }
 </script>
 
@@ -58,9 +73,14 @@ function money(value: number, currency: string): string {
         </p>
 
         <div class="mt-5 rounded-lg border bg-background p-4">
-          <p class="text-sm text-muted-foreground line-through">List {{ money(product.list_price, product.currency) }}</p>
+          <p v-if="product.list_price > product.your_price" class="text-sm text-muted-foreground line-through">List {{ money(product.list_price, product.currency) }}</p>
           <p class="text-2xl font-semibold">{{ money(product.your_price, product.currency) }}</p>
           <p class="text-xs text-muted-foreground">your price · ex VAT</p>
+
+          <div v-if="canPlaceOrders" class="mt-4 flex items-center gap-2">
+            <Input v-model.number="quantity" type="number" min="1" class="w-20" />
+            <Button type="button" @click="addToCart"><Plus class="size-4" /> Add to cart</Button>
+          </div>
         </div>
 
         <div v-if="product.description" class="mt-6">

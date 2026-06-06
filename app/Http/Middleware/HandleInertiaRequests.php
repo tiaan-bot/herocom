@@ -2,7 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Domain\Ordering\Enums\CartStatus;
+use App\Domain\Ordering\Models\CartItem;
 use App\Models\User;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -45,11 +48,29 @@ class HandleInertiaRequests extends Middleware
                     'name' => $user->name,
                     'email' => $user->email,
                     'company' => $user->company?->legal_name,
+                    'can' => [
+                        'place_orders' => $user->can('place_orders'),
+                    ],
                 ] : null,
             ],
+            'cartCount' => fn (): int => $this->openCartItemCount($user),
             'flash' => [
                 'status' => fn () => $request->session()->get('status'),
+                'error' => fn () => $request->session()->get('error'),
             ],
         ];
+    }
+
+    private function openCartItemCount(?Authenticatable $user): int
+    {
+        if (! $user instanceof User || $user->company_id === null) {
+            return 0;
+        }
+
+        return CartItem::query()
+            ->whereHas('cart', fn ($query) => $query
+                ->where('user_id', $user->getKey())
+                ->where('status', CartStatus::Open))
+            ->count();
     }
 }
