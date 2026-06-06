@@ -2,6 +2,8 @@
 
 namespace App\Filament\Pages;
 
+use App\Domain\Billing\Jobs\SyncZohoInvoices;
+use App\Domain\Billing\Models\Invoice;
 use App\Domain\Catalog\Enums\ProductStatus;
 use App\Domain\Catalog\Jobs\SyncZohoProducts;
 use App\Domain\Catalog\Models\Product;
@@ -11,13 +13,13 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 
-class CatalogSync extends Page
+class ZohoSync extends Page
 {
-    protected string $view = 'filament.pages.catalog-sync';
+    protected string $view = 'filament.pages.zoho-sync';
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedArrowPath;
 
-    protected static ?string $title = 'Catalog sync';
+    protected static ?string $title = 'Zoho Sync';
 
     protected static string|\UnitEnum|null $navigationGroup = 'Catalog';
 
@@ -32,14 +34,21 @@ class CatalogSync extends Page
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('syncNow')
-                ->label('Sync now')
+            Action::make('syncProducts')
+                ->label('Sync products')
                 ->icon(Heroicon::OutlinedArrowPath)
                 ->requiresConfirmation()
-                ->modalDescription('Queue a full sync from Zoho Books? Existing products are updated and items removed in Zoho are marked inactive.')
                 ->action(function (): void {
                     SyncZohoProducts::dispatch(full: true);
-                    Notification::make()->success()->title('Sync queued')->body('A full Zoho product sync has been dispatched.')->send();
+                    Notification::make()->success()->title('Product sync queued')->send();
+                }),
+            Action::make('syncInvoices')
+                ->label('Sync invoices')
+                ->icon(Heroicon::OutlinedArrowPath)
+                ->requiresConfirmation()
+                ->action(function (): void {
+                    SyncZohoInvoices::dispatch(full: true);
+                    Notification::make()->success()->title('Invoice sync queued')->send();
                 }),
         ];
     }
@@ -51,8 +60,10 @@ class CatalogSync extends Page
     {
         return [
             'productCount' => Product::query()->count(),
-            'activeCount' => Product::query()->where('status', ProductStatus::Active)->count(),
-            'lastSyncedAt' => Product::query()->max('last_synced_at'),
+            'activeProductCount' => Product::query()->where('status', ProductStatus::Active)->count(),
+            'productsLastSyncedAt' => Product::query()->max('last_synced_at'),
+            'invoiceCount' => Invoice::query()->count(),
+            'invoicesLastSyncedAt' => Invoice::query()->max('last_synced_at'),
         ];
     }
 }

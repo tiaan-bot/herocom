@@ -86,6 +86,39 @@ final class ZohoClient
     }
 
     /**
+     * @param  array<string, mixed>  $filters  Extra query params (e.g. last_modified_time for incremental sync).
+     * @return array<int, array<string, mixed>>
+     */
+    public function listInvoices(int $page = 1, array $filters = []): array
+    {
+        $json = $this->request('GET', '/books/v3/invoices', array_merge([
+            'page' => $page,
+            'per_page' => 200,
+        ], $filters));
+
+        /** @var array<int, array<string, mixed>> $invoices */
+        $invoices = $json['invoices'] ?? [];
+
+        return $invoices;
+    }
+
+    /**
+     * Fetch a single invoice's full detail. The list endpoint omits sub_total,
+     * tax_total, and the salesorders linkage — only the detail carries them.
+     *
+     * @return array<string, mixed>
+     */
+    public function getInvoice(string $invoiceId): array
+    {
+        $json = $this->request('GET', "/books/v3/invoices/{$invoiceId}");
+
+        /** @var array<string, mixed> $invoice */
+        $invoice = $json['invoice'] ?? $json;
+
+        return $invoice;
+    }
+
+    /**
      * Create a Zoho Books contact (customer). Returns the `contact` payload.
      *
      * @param  array<string, mixed>  $data

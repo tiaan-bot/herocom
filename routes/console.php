@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Billing\Jobs\SyncZohoInvoices;
 use App\Domain\Catalog\Jobs\SyncZohoProducts;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -12,3 +13,7 @@ Artisan::command('inspire', function () {
 // Catalog: incremental Zoho product sync every 30 min, full sync nightly.
 Schedule::job(new SyncZohoProducts(full: false))->everyThirtyMinutes()->withoutOverlapping();
 Schedule::job(new SyncZohoProducts(full: true))->dailyAt('02:00')->withoutOverlapping();
+
+// Billing: incremental Zoho invoice sync every 30 min, full sync nightly.
+Schedule::job(new SyncZohoInvoices(full: false))->everyThirtyMinutes()->withoutOverlapping();
+Schedule::job(new SyncZohoInvoices(full: true))->dailyAt('02:30')->withoutOverlapping();
