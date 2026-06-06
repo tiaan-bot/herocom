@@ -69,14 +69,15 @@ final class ZohoClient
     }
 
     /**
+     * @param  array<string, mixed>  $filters  Extra query params (e.g. last_modified_time for incremental sync).
      * @return array<int, array<string, mixed>>
      */
-    public function listItems(int $page = 1): array
+    public function listItems(int $page = 1, array $filters = []): array
     {
-        $json = $this->request('GET', '/books/v3/items', [
+        $json = $this->request('GET', '/books/v3/items', array_merge([
             'page' => $page,
-            'per_page' => 25,
-        ]);
+            'per_page' => 200,
+        ], $filters));
 
         /** @var array<int, array<string, mixed>> $items */
         $items = $json['items'] ?? [];
