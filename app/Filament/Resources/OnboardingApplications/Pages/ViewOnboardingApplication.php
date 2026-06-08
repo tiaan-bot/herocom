@@ -8,8 +8,10 @@ use App\Domain\Onboarding\Actions\RejectOnboardingApplicationAction;
 use App\Domain\Onboarding\Actions\RequestApplicationInformationAction;
 use App\Domain\Onboarding\Actions\ViewCgicPayloadAction;
 use App\Domain\Onboarding\Enums\AccountType;
+use App\Domain\Onboarding\Enums\ApplicationPdfStatus;
 use App\Domain\Onboarding\Enums\CgicStatus;
 use App\Domain\Onboarding\Exceptions\OnboardingDecisionException;
+use App\Domain\Onboarding\Jobs\GenerateApplicationPdf;
 use App\Domain\Onboarding\Models\OnboardingApplication;
 use App\Filament\Resources\OnboardingApplications\OnboardingApplicationResource;
 use App\Models\User;
@@ -35,9 +37,26 @@ class ViewOnboardingApplication extends ViewRecord
             $this->requestInfoAction(),
             $this->recordCgicAction(),
             $this->viewCgicPayloadAction(),
+            $this->regeneratePdfAction(),
             $this->approveAction(),
             $this->rejectAction(),
         ];
+    }
+
+    private function regeneratePdfAction(): Action
+    {
+        return Action::make('regeneratePdf')
+            ->label('Regenerate PDF')
+            ->icon(Heroicon::OutlinedArrowPath)
+            ->color('gray')
+            ->requiresConfirmation()
+            ->visible(fn (OnboardingApplication $record): bool => $this->currentUser()->can('process', $record))
+            ->action(function (OnboardingApplication $record): void {
+                $record->forceFill(['application_pdf_status' => ApplicationPdfStatus::Pending])->save();
+                GenerateApplicationPdf::dispatch($record);
+                Notification::make()->success()->title('Application PDF queued for regeneration')->send();
+                $this->refreshFormData(['application_pdf_status']);
+            });
     }
 
     private function requestInfoAction(): Action

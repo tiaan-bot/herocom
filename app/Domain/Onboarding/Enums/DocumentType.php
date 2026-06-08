@@ -13,4 +13,6 @@ enum DocumentType: string
     case BankConfirmation = 'bank_confirmation';
     case ProofOfAddress = 'proof_of_address';
     case DeedOfSurety = 'deed_of_surety';
+    // System-generated PDF of the submitted application (Stream B2).
+    case ApplicationForm = 'application_form';
 }

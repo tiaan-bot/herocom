@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\OnboardingApplications\Schemas;
 
 use App\Domain\Onboarding\Enums\AccountType;
+use App\Domain\Onboarding\Enums\ApplicationPdfStatus;
 use App\Domain\Onboarding\Models\OnboardingApplication;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
@@ -73,6 +74,22 @@ class OnboardingApplicationInfolist
                         TextEntry::make('terms_version')->label('T&Cs version')->placeholder('—'),
                         TextEntry::make('popia_consent_at')->label('POPIA consent')->dateTime()->placeholder('—'),
                         TextEntry::make('credit_enquiry_consent_at')->label('Credit enquiry consent')->dateTime()->placeholder('—'),
+                    ]),
+
+                Section::make('Signature & form')
+                    ->columns(2)
+                    ->schema([
+                        TextEntry::make('signed_by_name')->label('Signed by')->placeholder('—'),
+                        TextEntry::make('signed_by_capacity')->label('Capacity')->placeholder('—'),
+                        TextEntry::make('signed_at')->label('Signed at')->dateTime()->placeholder('—'),
+                        TextEntry::make('application_pdf_status')
+                            ->label('Application PDF')
+                            ->badge()
+                            ->color(fn ($state): string => match ($state) {
+                                ApplicationPdfStatus::Generated => 'success',
+                                ApplicationPdfStatus::Failed => 'danger',
+                                default => 'warning',
+                            }),
                     ]),
 
                 Section::make('Decision trail')

@@ -9,11 +9,10 @@ use App\Domain\Onboarding\Enums\AccountType;
 use App\Domain\Onboarding\Enums\DocumentType;
 use App\Domain\Onboarding\Enums\EntityType;
 use App\Domain\Onboarding\Enums\TurnoverBand;
+use App\Domain\Onboarding\Jobs\GenerateApplicationPdf;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreOnboardingApplicationRequest;
-use App\Notifications\ApplicationReceivedNotification;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -36,11 +35,9 @@ class OnboardingApplicationController extends Controller
     {
         $application = $action->execute($request->toData());
 
-        Notification::route('mail', $application->contact_email)
-            ->notify(new ApplicationReceivedNotification(
-                $application->contact_name,
-                $application->company->legal_name,
-            ));
+        // The queued job builds the PDF, records it, and emails the applicant a
+        // copy attached to their confirmation (see GenerateApplicationPdf).
+        GenerateApplicationPdf::dispatch($application);
 
         return redirect()->route('apply.success');
     }

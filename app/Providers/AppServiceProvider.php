@@ -17,6 +17,7 @@ use App\Domain\Ordering\Listeners\SendOrderConfirmationEmail;
 use App\Domain\Ordering\Models\Order;
 use App\Domain\Ordering\Policies\OrderPolicy;
 use App\Models\User;
+use Barryvdh\DomPDF\PDF;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -44,7 +45,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // barryvdh/laravel-dompdf only binds 'dompdf.wrapper' + the Pdf facade — not
+        // the PDF class itself. Map the class so jobs/actions can type-hint it and
+        // receive the package's configured wrapper.
+        $this->app->bind(PDF::class, fn ($app) => $app->make('dompdf.wrapper'));
     }
 
     /**

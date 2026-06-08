@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Onboarding\Models;
 
 use App\Domain\Onboarding\Enums\AccountType;
+use App\Domain\Onboarding\Enums\ApplicationPdfStatus;
 use App\Domain\Onboarding\Enums\ApplicationStatus;
 use App\Domain\Onboarding\Enums\CgicStatus;
 use App\Domain\Onboarding\Enums\TurnoverBand;
@@ -33,6 +34,7 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property string|null $signed_by_capacity
  * @property Carbon|null $signed_at
  * @property string|null $signature_path
+ * @property ApplicationPdfStatus $application_pdf_status
  * @property-read Company $company
  */
 class OnboardingApplication extends Model
@@ -78,6 +80,7 @@ class OnboardingApplication extends Model
         'signed_by_capacity',
         'signed_at',
         'signature_path',
+        'application_pdf_status',
     ];
 
     /**
@@ -102,6 +105,7 @@ class OnboardingApplication extends Model
             'submitted_at' => 'datetime',
             'reviewed_at' => 'datetime',
             'signed_at' => 'datetime',
+            'application_pdf_status' => ApplicationPdfStatus::class,
         ];
     }
 

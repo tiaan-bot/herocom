@@ -6,12 +6,14 @@ use App\Domain\Onboarding\Enums\AccountType;
 use App\Domain\Onboarding\Enums\ApplicationStatus;
 use App\Domain\Onboarding\Enums\CgicStatus;
 use App\Domain\Onboarding\Enums\CompanyStatus;
+use App\Domain\Onboarding\Jobs\GenerateApplicationPdf;
 use App\Domain\Onboarding\Models\Company;
 use App\Domain\Onboarding\Models\OnboardingApplication;
 use App\Notifications\ApplicationReceivedNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
@@ -94,9 +96,18 @@ it('creates a pending company and submitted COD application', function () {
         ->and($application->status)->toBe(ApplicationStatus::Submitted)
         ->and($application->account_type_requested)->toBe(AccountType::Cod)
         ->and($application->cgic_status)->toBe(CgicStatus::NotRequired)
-        ->and($application->documents)->toHaveCount(2);
+        // 2 uploads + the system-generated application_form PDF (job runs sync in tests).
+        ->and($application->documents)->toHaveCount(3);
 
     Notification::assertSentOnDemand(ApplicationReceivedNotification::class);
+});
+
+it('dispatches the application PDF job on submit', function () {
+    Queue::fake();
+
+    $this->post('/apply', codApplyPayload())->assertRedirect(route('apply.success'));
+
+    Queue::assertPushed(GenerateApplicationPdf::class);
 });
 
 it('records consent timestamps on submit', function () {
