@@ -50,6 +50,9 @@ function codData(array $overrides = []): SubmitOnboardingApplicationData
         'termsVersion' => '2026-01',
         'termsAccepted' => true,
         'popiaConsent' => true,
+        'signedByName' => 'Jane Doe',
+        'signedByCapacity' => 'Director',
+        'signature' => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
         'documents' => [new DocumentUploadData(DocumentType::SignedApplicationForm, pdf('form.pdf'))],
     ];
 
@@ -76,6 +79,17 @@ it('stores submitted documents on the private r2 disk', function () {
     expect($application->documents)->toHaveCount(1)
         ->and($document->disk)->toBe('r2');
     Storage::disk('r2')->assertExists($document->path);
+});
+
+it('stores the drawn signature png and records the signatory details', function () {
+    $application = app(SubmitOnboardingApplicationAction::class)->execute(codData());
+
+    expect($application->signed_by_name)->toBe('Jane Doe')
+        ->and($application->signed_by_capacity)->toBe('Director')
+        ->and($application->signed_at)->not->toBeNull()
+        ->and($application->signature_path)->toBe("onboarding/{$application->uuid}/signature.png");
+
+    Storage::disk('r2')->assertExists($application->signature_path);
 });
 
 it('builds a credit application with principals and an encrypted cgic payload', function () {

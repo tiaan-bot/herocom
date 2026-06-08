@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Head, useForm } from '@inertiajs/vue3'
 import { Check, ChevronLeft, ChevronRight, Loader2, Plus, Trash2, Building2, CreditCard } from 'lucide-vue-next'
 import PublicLayout from '@/Layouts/PublicLayout.vue'
 import FormField from '@/components/FormField.vue'
+import SignaturePad from '@/components/SignaturePad.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -93,9 +94,12 @@ interface ApplyForm {
   terms_accepted: boolean
   popia_consent: boolean
   credit_enquiry_consent: boolean
+  signed_by_name: string
+  signed_by_capacity: string
+  signature: string // base64 image/png data URL
 }
 
-type StepKey = 'account' | 'company' | 'contact' | 'principals' | 'financials' | 'documents' | 'review'
+type StepKey = 'account' | 'company' | 'contact' | 'principals' | 'financials' | 'documents' | 'signature' | 'review'
 
 interface Step {
   key: StepKey
@@ -127,6 +131,7 @@ const form = useForm<ApplyForm>({
   },
   terms_version: props.termsVersion,
   terms_accepted: false, popia_consent: false, credit_enquiry_consent: false,
+  signed_by_name: '', signed_by_capacity: '', signature: '',
 })
 
 // Inertia types errors by top-level key only; nested doc/principal keys need a string lookup.
@@ -144,8 +149,30 @@ const allSteps: Step[] = [
   { key: 'principals', label: 'Principals', creditOnly: true },
   { key: 'financials', label: 'Financials', creditOnly: true },
   { key: 'documents', label: 'Documents' },
+  { key: 'signature', label: 'Declaration & signature' },
   { key: 'review', label: 'Review' },
 ]
+
+// One declaration checkbox stands for truth-of-information + T&Cs + POPIA; it drives
+// the existing backend consent fields and gates the signature pad.
+const declarationAccepted = computed<boolean>({
+  get: () => form.terms_accepted && form.popia_consent,
+  set: (value: boolean) => {
+    form.terms_accepted = value
+    form.popia_consent = value
+  },
+})
+
+const today = computed(() =>
+  new Date().toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' }),
+)
+
+const signatureComplete = computed(() =>
+  declarationAccepted.value
+  && (!isCredit.value || form.credit_enquiry_consent)
+  && filled(form.signed_by_name, form.signed_by_capacity)
+  && form.signature !== '',
+)
 const steps = computed<Step[]>(() => allSteps.filter((s) => !s.creditOnly || isCredit.value))
 const stepIndex = ref(0)
 const current = computed<Step>(() => steps.value[stepIndex.value] ?? steps.value[0])
@@ -204,9 +231,17 @@ const stepComplete = computed<Record<StepKey, boolean>>(() => ({
     && form.principals.every((p) => filled(p.full_name, p.surname, p.id_number)),
   financials: filled(form.credit_limit_requested, form.credit_terms_requested_days, form.annual_turnover_band, form.cgic_payload.banking.bank),
   documents: visibleDocs.value.filter(docRequired).every((d) => form.documents[d.value]),
-  review: form.terms_accepted && form.popia_consent && (!isCredit.value || form.credit_enquiry_consent),
+  signature: signatureComplete.value,
+  review: signatureComplete.value,
 }))
 const canProceed = computed(() => stepComplete.value[current.value.key])
+
+// Default the signatory name to the contact once the signature step is reached.
+watch(current, (step) => {
+  if (step.key === 'signature' && !form.signed_by_name) {
+    form.signed_by_name = form.contact_name
+  }
+})
 
 function next(): void {
   if (stepIndex.value === 0 && form.principals.length === 0 && isCredit.value) addPrincipal()
@@ -231,7 +266,8 @@ const stepForField: Record<string, StepKey> = {
   credit_limit_requested: 'financials', credit_terms_requested_days: 'financials',
   annual_turnover_band: 'financials', cgic_payload: 'financials',
   documents: 'documents',
-  terms_accepted: 'review', popia_consent: 'review', credit_enquiry_consent: 'review', terms_version: 'review',
+  terms_accepted: 'signature', popia_consent: 'signature', credit_enquiry_consent: 'signature', terms_version: 'signature',
+  signed_by_name: 'signature', signed_by_capacity: 'signature', signature: 'signature',
 }
 
 function jumpToFirstError(): void {
@@ -474,7 +510,66 @@ function submit(): void {
         </div>
       </div>
 
-      <!-- Step: Review & consent -->
+      <!-- Step: Declaration & signature -->
+      <div v-show="current.key === 'signature'" class="space-y-5">
+        <div class="rounded-md border bg-background p-4 text-sm leading-relaxed text-muted-foreground">
+          <p class="font-medium text-foreground">Declaration</p>
+          <p class="mt-1">
+            I declare that the information given in this application is true and complete. I have read and accept the
+            <a :href="termsUrl" target="_blank" class="text-primary underline">Standard Terms &amp; Conditions of Sale</a>
+            (version {{ termsVersion }}), and I consent to Herocom processing this information in line with POPIA.
+          </p>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex items-start gap-2">
+            <Checkbox id="declaration" v-model="declarationAccepted" />
+            <Label for="declaration" class="font-normal leading-snug">
+              I confirm the declaration above. <span class="text-destructive">*</span>
+            </Label>
+          </div>
+          <div v-if="isCredit" class="flex items-start gap-2">
+            <Checkbox id="enquiry" v-model="form.credit_enquiry_consent" />
+            <Label for="enquiry" class="font-normal leading-snug">I consent to a credit enquiry and submission to CGIC for credit assessment.</Label>
+          </div>
+        </div>
+
+        <!-- Credit: each principal signs the Deed of Suretyship separately. -->
+        <Card v-if="isCredit && form.principals.length">
+          <CardHeader>
+            <CardTitle class="text-base">Sureties</CardTitle>
+            <CardDescription>The signature below is the applicant's. Each principal signs the Deed of Suretyship separately.</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-2 text-sm">
+            <div v-for="(p, i) in form.principals" :key="i" class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b pb-2 last:border-0 last:pb-0">
+              <span class="font-medium">{{ p.full_name }} {{ p.surname }}</span>
+              <span class="text-muted-foreground">ID {{ p.id_number }}</span>
+              <span class="text-xs text-muted-foreground">To be signed on the Deed of Suretyship</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <FormField label="Full name of signatory" :error="form.errors.signed_by_name" required>
+            <Input v-model="form.signed_by_name" />
+          </FormField>
+          <FormField label="Capacity / title" :error="form.errors.signed_by_capacity" required hint="e.g. Director, Owner, Member.">
+            <Input v-model="form.signed_by_capacity" />
+          </FormField>
+        </div>
+
+        <div>
+          <div class="mb-1 flex items-center justify-between">
+            <Label>Signature <span class="text-destructive">*</span></Label>
+            <span class="text-xs text-muted-foreground">Date: {{ today }}</span>
+          </div>
+          <SignaturePad v-model="form.signature" :disabled="!declarationAccepted" />
+          <p v-if="!declarationAccepted" class="mt-1 text-xs text-muted-foreground">Confirm the declaration above to enable signing.</p>
+          <p v-if="form.errors.signature" class="mt-1 text-xs font-medium text-destructive">{{ form.errors.signature }}</p>
+        </div>
+      </div>
+
+      <!-- Step: Review -->
       <div v-show="current.key === 'review'" class="space-y-5">
         <Card>
           <CardHeader><CardTitle class="text-base">Summary</CardTitle></CardHeader>
@@ -488,25 +583,13 @@ function submit(): void {
           </CardContent>
         </Card>
 
-        <div v-if="Object.keys(form.errors).length" class="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          Please review the highlighted fields — some steps need attention before you can submit.
+        <div class="rounded-md border bg-background p-4 text-sm">
+          <span class="text-muted-foreground">Signed by:</span>
+          {{ form.signed_by_name || '—' }}<span v-if="form.signed_by_capacity"> ({{ form.signed_by_capacity }})</span> · {{ today }}
         </div>
 
-        <div class="space-y-3">
-          <div class="flex items-start gap-2">
-            <Checkbox id="terms" v-model="form.terms_accepted" />
-            <Label for="terms" class="font-normal leading-snug">
-              I accept the <a :href="termsUrl" target="_blank" class="text-primary underline">Standard Terms &amp; Conditions of Sale</a> (version {{ termsVersion }}).
-            </Label>
-          </div>
-          <div class="flex items-start gap-2">
-            <Checkbox id="popia" v-model="form.popia_consent" />
-            <Label for="popia" class="font-normal leading-snug">I consent to Herocom processing this information in line with POPIA.</Label>
-          </div>
-          <div v-if="isCredit" class="flex items-start gap-2">
-            <Checkbox id="enquiry" v-model="form.credit_enquiry_consent" />
-            <Label for="enquiry" class="font-normal leading-snug">I consent to a credit enquiry and submission to CGIC for credit assessment.</Label>
-          </div>
+        <div v-if="Object.keys(form.errors).length" class="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          Please review the highlighted fields — some steps need attention before you can submit.
         </div>
       </div>
 

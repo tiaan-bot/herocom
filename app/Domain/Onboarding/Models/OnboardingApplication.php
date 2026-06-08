@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
@@ -28,6 +29,10 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property string $contact_email
  * @property CgicStatus $cgic_status
  * @property TurnoverBand|null $annual_turnover_band
+ * @property string|null $signed_by_name
+ * @property string|null $signed_by_capacity
+ * @property Carbon|null $signed_at
+ * @property string|null $signature_path
  * @property-read Company $company
  */
 class OnboardingApplication extends Model
@@ -69,6 +74,10 @@ class OnboardingApplication extends Model
         'reviewed_by',
         'reviewed_at',
         'decision_notes',
+        'signed_by_name',
+        'signed_by_capacity',
+        'signed_at',
+        'signature_path',
     ];
 
     /**
@@ -92,6 +101,7 @@ class OnboardingApplication extends Model
             'credit_enquiry_consent_at' => 'datetime',
             'submitted_at' => 'datetime',
             'reviewed_at' => 'datetime',
+            'signed_at' => 'datetime',
         ];
     }
 

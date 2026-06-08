@@ -32,6 +32,10 @@ final readonly class SubmitOnboardingApplicationData
         public string $termsVersion,
         public bool $termsAccepted,
         public bool $popiaConsent,
+        // Declaration & signature (B1) — drawn signature as a base64 image/png data URL.
+        public string $signedByName,
+        public string $signedByCapacity,
+        public string $signature,
         // Collections
         public array $principals = [],
         public array $documents = [],

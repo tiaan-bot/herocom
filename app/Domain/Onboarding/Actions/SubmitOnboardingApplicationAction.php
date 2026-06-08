@@ -72,6 +72,9 @@ final class SubmitOnboardingApplicationAction
                 'popia_consent_at' => $data->popiaConsent ? $now : null,
                 'credit_enquiry_consent_at' => $data->isCredit() && $data->creditEnquiryConsent ? $now : null,
                 'submitted_at' => $now,
+                'signed_by_name' => $data->signedByName,
+                'signed_by_capacity' => $data->signedByCapacity,
+                'signed_at' => $now,
             ]);
 
             foreach ($data->principals as $principal) {
@@ -81,6 +84,8 @@ final class SubmitOnboardingApplicationAction
             foreach ($data->documents as $document) {
                 $this->storeDocument($application, $document);
             }
+
+            $this->storeSignature($application, $data->signature);
 
             return $application;
         });
@@ -122,5 +127,27 @@ final class SubmitOnboardingApplicationAction
             'verification_status' => VerificationStatus::Pending,
             // uploaded_by is null — submitted pre-authentication by the applicant.
         ]);
+    }
+
+    /**
+     * Decode the drawn signature (base64 image/png data URL) and store the PNG on
+     * the private onboarding disk, alongside the application's documents.
+     */
+    private function storeSignature(OnboardingApplication $application, string $dataUrl): void
+    {
+        $diskName = config('onboarding.documents.disk');
+        $disk = $this->filesystem->disk($diskName);
+
+        $base64 = (string) preg_replace('#^data:image/png;base64,#', '', $dataUrl);
+        $binary = base64_decode($base64, true);
+
+        if ($binary === false) {
+            return;
+        }
+
+        $path = "onboarding/{$application->uuid}/signature.png";
+        $disk->put($path, $binary);
+
+        $application->forceFill(['signature_path' => $path])->save();
     }
 }

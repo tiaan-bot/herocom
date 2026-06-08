@@ -126,6 +126,11 @@ class StoreOnboardingApplicationRequest extends FormRequest
             'terms_accepted' => ['accepted'],
             'popia_consent' => ['accepted'],
             'credit_enquiry_consent' => $isCredit ? ['accepted'] : ['nullable', 'boolean'],
+
+            // Declaration & signature (drawn-only; base64 image/png data URL).
+            'signed_by_name' => ['required', 'string', 'max:255'],
+            'signed_by_capacity' => ['required', 'string', 'max:255'],
+            'signature' => ['required', 'string', 'max:5000000', 'regex:/^data:image\/png;base64,[A-Za-z0-9+\/=\r\n]+$/'],
         ];
     }
 
@@ -155,6 +160,9 @@ class StoreOnboardingApplicationRequest extends FormRequest
             termsVersion: (string) $this->string('terms_version'),
             termsAccepted: $this->boolean('terms_accepted'),
             popiaConsent: $this->boolean('popia_consent'),
+            signedByName: (string) $this->string('signed_by_name'),
+            signedByCapacity: (string) $this->string('signed_by_capacity'),
+            signature: (string) $this->string('signature'),
             principals: $this->principalData(),
             documents: $this->documentData(),
             tradingName: $this->input('trading_name'),

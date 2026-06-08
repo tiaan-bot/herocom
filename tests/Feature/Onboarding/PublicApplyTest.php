@@ -48,6 +48,9 @@ function codApplyPayload(array $overrides = []): array
         'terms_version' => '2026-01',
         'terms_accepted' => true,
         'popia_consent' => true,
+        'signed_by_name' => 'Jane Doe',
+        'signed_by_capacity' => 'Director',
+        'signature' => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
         'documents' => [
             'signed_application_form' => fakePdf(),
             'id_document' => fakePdf(),
@@ -129,6 +132,44 @@ it('rejects a company entity missing its CIPC registration', function () {
 
     $this->post('/apply', $payload)->assertSessionHasErrors('documents.cipc_registration');
     expect(OnboardingApplication::count())->toBe(0);
+});
+
+it('requires a drawn signature', function () {
+    $payload = codApplyPayload();
+    unset($payload['signature']);
+
+    $this->post('/apply', $payload)->assertSessionHasErrors('signature');
+    expect(Company::count())->toBe(0);
+});
+
+it('rejects a signature that is not a png data url', function () {
+    $this->post('/apply', codApplyPayload(['signature' => 'just some text']))
+        ->assertSessionHasErrors('signature');
+    expect(Company::count())->toBe(0);
+});
+
+it('requires the declaration (terms + popia) before submitting', function () {
+    $this->post('/apply', codApplyPayload(['terms_accepted' => false, 'popia_consent' => false]))
+        ->assertSessionHasErrors(['terms_accepted', 'popia_consent']);
+    expect(Company::count())->toBe(0);
+});
+
+it('requires the signatory name and capacity', function () {
+    $payload = codApplyPayload();
+    unset($payload['signed_by_name'], $payload['signed_by_capacity']);
+
+    $this->post('/apply', $payload)->assertSessionHasErrors(['signed_by_name', 'signed_by_capacity']);
+    expect(Company::count())->toBe(0);
+});
+
+it('stores the signature and signatory details on submit', function () {
+    $this->post('/apply', codApplyPayload())->assertRedirect(route('apply.success'));
+
+    $application = OnboardingApplication::sole();
+    expect($application->signed_by_name)->toBe('Jane Doe')
+        ->and($application->signed_by_capacity)->toBe('Director')
+        ->and($application->signed_at)->not->toBeNull();
+    Storage::disk('r2')->assertExists($application->signature_path);
 });
 
 it('rejects a submission when the honeypot is filled', function () {

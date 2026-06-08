@@ -35,6 +35,9 @@ function codPayload(array $overrides = []): array
         'terms_version' => '2026-01',
         'terms_accepted' => true,
         'popia_consent' => true,
+        'signed_by_name' => 'Jane Doe',
+        'signed_by_capacity' => 'Director',
+        'signature' => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
         'documents' => [
             'signed_application_form' => UploadedFile::fake()->create('form.pdf', 50, 'application/pdf'),
             'id_document' => UploadedFile::fake()->create('id.pdf', 50, 'application/pdf'),
