@@ -35,8 +35,14 @@ final class SubmitOnboardingApplicationAction
                 'trading_name' => $data->tradingName,
                 'entity_type' => $data->entityType,
                 'registration_number' => $data->registrationNumber,
+                'date_of_registration' => $data->dateOfRegistration,
                 'vat_number' => $data->vatNumber,
                 'nature_of_business' => $data->natureOfBusiness,
+                'telephone' => $data->companyTelephone,
+                'fax' => $data->companyFax,
+                'postal_address_line1' => $data->postalAddressLine1,
+                'postal_province' => $data->postalProvince,
+                'postal_postal_code' => $data->postalPostalCode,
                 'status' => CompanyStatus::Pending,
                 'credit_terms' => CreditTerms::EftUpfront,
                 'address_line1' => $data->addressLine1,
@@ -54,6 +60,9 @@ final class SubmitOnboardingApplicationAction
                 'contact_name' => $data->contactName,
                 'contact_email' => $data->contactEmail,
                 'contact_phone' => $data->contactPhone,
+                'account_contact_name' => $data->isCredit() ? $data->accountContactName : null,
+                'account_contact_email' => $data->isCredit() ? $data->accountContactEmail : null,
+                'account_contact_phone' => $data->isCredit() ? $data->accountContactPhone : null,
                 'premises_owned' => $data->premisesOwned,
                 'landlord_name' => $data->landlordName,
                 'landlord_address' => $data->landlordAddress,
@@ -79,6 +88,18 @@ final class SubmitOnboardingApplicationAction
 
             foreach ($data->principals as $principal) {
                 $this->createPrincipal($application, $principal);
+            }
+
+            if ($data->isCredit()) {
+                foreach ($data->tradeReferences as $reference) {
+                    $application->tradeReferences()->create([
+                        'company_name' => $reference->companyName,
+                        'credit_limit' => $reference->creditLimit,
+                        'credit_limit_currency' => $reference->creditLimitCurrency,
+                        'account_held' => $reference->accountHeld,
+                        'terms_days' => $reference->termsDays,
+                    ]);
+                }
             }
 
             foreach ($data->documents as $document) {

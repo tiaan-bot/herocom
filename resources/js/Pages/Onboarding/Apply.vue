@@ -38,7 +38,16 @@ interface ApplyPageProps {
   entityTypes: Option[]
   turnoverBands: Option[]
   creditTermsDays: number[]
+  bankAccountTypes: Option[]
+  accountHeldOptions: Option[]
   documentTypes: DocumentTypeDef[]
+}
+
+interface TradeReferenceInput {
+  company_name: string
+  credit_limit: string
+  account_held: string
+  terms_days: string
 }
 
 interface PrincipalInput {
@@ -55,7 +64,15 @@ interface PrincipalInput {
 }
 
 interface CgicPayload {
-  banking: { bank: string; account_name: string; account_number: string; branch_code: string }
+  banking: {
+    bank: string
+    date_opened: string
+    branch_name: string
+    branch_code: string
+    account_type: string
+    account_number: string
+    account_name: string
+  }
   disclosures: { judgements: boolean; liquidations: boolean; sureties_cessions: boolean; moratoriums: boolean }
 }
 
@@ -67,6 +84,7 @@ interface ApplyForm {
   trading_name: string
   entity_type: string
   registration_number: string
+  date_of_registration: string
   vat_number: string
   nature_of_business: string
   address_line1: string
@@ -76,9 +94,18 @@ interface ApplyForm {
   postal_code: string
   country_code: string
   currency: string
+  company_telephone: string
+  company_fax: string
+  postal_address_line1: string
+  postal_province: string
+  postal_postal_code: string
   contact_name: string
   contact_email: string
   contact_phone: string
+  account_contact_name: string
+  account_contact_email: string
+  account_contact_phone: string
+  trade_references: TradeReferenceInput[]
   premises_owned: boolean
   landlord_name: string
   landlord_address: string
@@ -115,13 +142,16 @@ const ACCEPT = '.pdf,.jpg,.jpeg,.png'
 const form = useForm<ApplyForm>({
   website: '',
   account_type_requested: '',
-  legal_name: '', trading_name: '', entity_type: '', registration_number: '', vat_number: '', nature_of_business: '',
+  legal_name: '', trading_name: '', entity_type: '', registration_number: '', date_of_registration: '', vat_number: '', nature_of_business: '',
   address_line1: '', address_line2: '', city: '', province: '', postal_code: '', country_code: 'ZA', currency: 'ZAR',
+  company_telephone: '', company_fax: '', postal_address_line1: '', postal_province: '', postal_postal_code: '',
   contact_name: '', contact_email: '', contact_phone: '',
+  account_contact_name: '', account_contact_email: '', account_contact_phone: '',
+  trade_references: [],
   premises_owned: true, landlord_name: '', landlord_address: '', landlord_tel: '', period_at_address: '',
   credit_limit_requested: '', credit_terms_requested_days: '', annual_turnover_band: '',
   cgic_payload: {
-    banking: { bank: '', account_name: '', account_number: '', branch_code: '' },
+    banking: { bank: '', date_opened: '', branch_name: '', branch_code: '', account_type: '', account_number: '', account_name: '' },
     disclosures: { judgements: false, liquidations: false, sureties_cessions: false, moratoriums: false },
   },
   principals: [],
@@ -140,6 +170,8 @@ function errorFor(key: string): string | undefined {
 }
 
 const isCredit = computed(() => form.account_type_requested === 'credit')
+// Date of registration is required for registered companies / close corporations.
+const needsRegDate = computed(() => isCredit.value && ['company', 'close_corporation'].includes(form.entity_type))
 const fileErrors = ref<Record<string, string>>({})
 
 const allSteps: Step[] = [
@@ -218,6 +250,15 @@ function removePrincipal(i: number): void {
   form.principals.splice(i, 1)
 }
 
+// --- trade references (credit, 1–3) ----------------------------------------
+function addTradeReference(): void {
+  if (form.trade_references.length >= 3) return
+  form.trade_references.push({ company_name: '', credit_limit: '', account_held: '', terms_days: '' })
+}
+function removeTradeReference(i: number): void {
+  form.trade_references.splice(i, 1)
+}
+
 // --- per-step gating -------------------------------------------------------
 function filled(...vals: unknown[]): boolean {
   return vals.every((v) => v !== '' && v !== null && v !== undefined)
@@ -225,11 +266,17 @@ function filled(...vals: unknown[]): boolean {
 const stepComplete = computed<Record<StepKey, boolean>>(() => ({
   account: !!form.account_type_requested,
   company: filled(form.legal_name, form.entity_type, form.address_line1, form.city, form.province, form.postal_code)
-    && (form.premises_owned || filled(form.landlord_name)),
+    && (form.premises_owned || filled(form.landlord_name))
+    && (!isCredit.value || filled(form.company_telephone, form.postal_address_line1, form.postal_province, form.postal_postal_code))
+    && (!needsRegDate.value || filled(form.date_of_registration)),
   contact: filled(form.contact_name, form.contact_phone) && /^\S+@\S+\.\S+$/.test(form.contact_email),
   principals: form.principals.length > 0
     && form.principals.every((p) => filled(p.full_name, p.surname, p.id_number)),
-  financials: filled(form.credit_limit_requested, form.credit_terms_requested_days, form.annual_turnover_band, form.cgic_payload.banking.bank),
+  financials: filled(form.credit_limit_requested, form.credit_terms_requested_days, form.annual_turnover_band)
+    && filled(form.cgic_payload.banking.bank, form.cgic_payload.banking.branch_name, form.cgic_payload.banking.branch_code, form.cgic_payload.banking.account_type, form.cgic_payload.banking.account_number, form.cgic_payload.banking.account_name)
+    && filled(form.account_contact_name, form.account_contact_phone) && /^\S+@\S+\.\S+$/.test(form.account_contact_email)
+    && form.trade_references.length > 0
+    && form.trade_references.every((t) => filled(t.company_name, t.account_held)),
   documents: visibleDocs.value.filter(docRequired).every((d) => form.documents[d.value]),
   signature: signatureComplete.value,
   review: signatureComplete.value,
@@ -258,13 +305,17 @@ function goTo(i: number): void {
 const stepForField: Record<string, StepKey> = {
   account_type_requested: 'account',
   legal_name: 'company', trading_name: 'company', entity_type: 'company', registration_number: 'company',
-  vat_number: 'company', nature_of_business: 'company', address_line1: 'company', address_line2: 'company',
+  date_of_registration: 'company', vat_number: 'company', nature_of_business: 'company', address_line1: 'company', address_line2: 'company',
   city: 'company', province: 'company', postal_code: 'company', premises_owned: 'company',
   landlord_name: 'company', landlord_address: 'company', landlord_tel: 'company', period_at_address: 'company',
+  company_telephone: 'company', company_fax: 'company',
+  postal_address_line1: 'company', postal_province: 'company', postal_postal_code: 'company',
   contact_name: 'contact', contact_email: 'contact', contact_phone: 'contact',
   principals: 'principals',
   credit_limit_requested: 'financials', credit_terms_requested_days: 'financials',
   annual_turnover_band: 'financials', cgic_payload: 'financials',
+  account_contact_name: 'financials', account_contact_email: 'financials', account_contact_phone: 'financials',
+  trade_references: 'financials',
   documents: 'documents',
   terms_accepted: 'signature', popia_consent: 'signature', credit_enquiry_consent: 'signature', terms_version: 'signature',
   signed_by_name: 'signature', signed_by_capacity: 'signature', signature: 'signature',
@@ -292,11 +343,21 @@ function submit(): void {
       return {
         ...data,
         principals: [],
+        trade_references: [],
         credit_limit_requested: null,
         credit_terms_requested_days: null,
         annual_turnover_band: null,
         cgic_payload: null,
         credit_enquiry_consent: false,
+        date_of_registration: null,
+        company_telephone: null,
+        company_fax: null,
+        postal_address_line1: null,
+        postal_province: null,
+        postal_postal_code: null,
+        account_contact_name: null,
+        account_contact_email: null,
+        account_contact_phone: null,
       }
     }
     return data
@@ -408,6 +469,28 @@ function submit(): void {
           <FormField label="Postal code" :error="form.errors.postal_code" required><Input v-model="form.postal_code" /></FormField>
         </div>
 
+        <!-- Credit-only company details -->
+        <div v-if="isCredit" class="grid gap-4 rounded-md border bg-background p-4 sm:grid-cols-2">
+          <FormField label="Date of registration" :error="form.errors.date_of_registration" :required="needsRegDate" hint="Required for companies and close corporations.">
+            <Input v-model="form.date_of_registration" type="date" />
+          </FormField>
+          <FormField label="Company telephone" :error="form.errors.company_telephone" required>
+            <Input v-model="form.company_telephone" />
+          </FormField>
+          <FormField label="Company fax" :error="form.errors.company_fax">
+            <Input v-model="form.company_fax" />
+          </FormField>
+          <FormField label="Postal address" :error="form.errors.postal_address_line1" required class="sm:col-span-2">
+            <Input v-model="form.postal_address_line1" />
+          </FormField>
+          <FormField label="Postal — province" :error="form.errors.postal_province" required>
+            <Input v-model="form.postal_province" />
+          </FormField>
+          <FormField label="Postal — postal code" :error="form.errors.postal_postal_code" required>
+            <Input v-model="form.postal_postal_code" />
+          </FormField>
+        </div>
+
         <div class="flex items-center gap-2">
           <Checkbox id="premises" v-model="form.premises_owned" />
           <Label for="premises">We own these premises</Label>
@@ -474,10 +557,54 @@ function submit(): void {
         <Card>
           <CardHeader><CardTitle class="text-base">Banking details</CardTitle><CardDescription>Used for the CGIC credit submission only.</CardDescription></CardHeader>
           <CardContent class="grid gap-4 sm:grid-cols-2">
-            <FormField label="Bank" required><Input v-model="form.cgic_payload.banking.bank" /></FormField>
-            <FormField label="Account name"><Input v-model="form.cgic_payload.banking.account_name" /></FormField>
-            <FormField label="Account number"><Input v-model="form.cgic_payload.banking.account_number" /></FormField>
-            <FormField label="Branch code"><Input v-model="form.cgic_payload.banking.branch_code" /></FormField>
+            <FormField label="Financial institution" :error="errorFor('cgic_payload.banking.bank')" required><Input v-model="form.cgic_payload.banking.bank" /></FormField>
+            <FormField label="Date account opened" :error="errorFor('cgic_payload.banking.date_opened')"><Input v-model="form.cgic_payload.banking.date_opened" type="date" /></FormField>
+            <FormField label="Branch name" :error="errorFor('cgic_payload.banking.branch_name')" required><Input v-model="form.cgic_payload.banking.branch_name" /></FormField>
+            <FormField label="Branch code" :error="errorFor('cgic_payload.banking.branch_code')" required><Input v-model="form.cgic_payload.banking.branch_code" /></FormField>
+            <FormField label="Account type" :error="errorFor('cgic_payload.banking.account_type')" required>
+              <Select v-model="form.cgic_payload.banking.account_type">
+                <SelectTrigger class="w-full"><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent><SelectItem v-for="o in bankAccountTypes" :key="o.value" :value="o.value">{{ o.label }}</SelectItem></SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Account number" :error="errorFor('cgic_payload.banking.account_number')" required><Input v-model="form.cgic_payload.banking.account_number" /></FormField>
+            <FormField label="Account name" :error="errorFor('cgic_payload.banking.account_name')" required><Input v-model="form.cgic_payload.banking.account_name" /></FormField>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle class="text-base">Trade references</CardTitle><CardDescription>Provide one to three trade references.</CardDescription></CardHeader>
+          <CardContent class="space-y-4">
+            <div v-for="(t, i) in form.trade_references" :key="i" class="grid gap-4 rounded-md border bg-background p-4 sm:grid-cols-2">
+              <div class="flex items-center justify-between sm:col-span-2">
+                <span class="text-sm font-medium">Reference {{ i + 1 }}</span>
+                <Button type="button" variant="ghost" size="icon-sm" @click="removeTradeReference(i)"><Trash2 class="size-4" /></Button>
+              </div>
+              <FormField label="Company name" :error="errorFor(`trade_references.${i}.company_name`)" required><Input v-model="t.company_name" /></FormField>
+              <FormField label="Credit limit (R)" :error="errorFor(`trade_references.${i}.credit_limit`)"><Input v-model="t.credit_limit" type="number" min="0" /></FormField>
+              <FormField label="Account held" :error="errorFor(`trade_references.${i}.account_held`)" required>
+                <Select v-model="t.account_held">
+                  <SelectTrigger class="w-full"><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent><SelectItem v-for="o in accountHeldOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem></SelectContent>
+                </Select>
+              </FormField>
+              <FormField v-if="t.account_held === 'credit'" label="Terms" :error="errorFor(`trade_references.${i}.terms_days`)">
+                <Select v-model="t.terms_days">
+                  <SelectTrigger class="w-full"><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent><SelectItem v-for="d in creditTermsDays" :key="d" :value="String(d)">{{ d }} days</SelectItem></SelectContent>
+                </Select>
+              </FormField>
+            </div>
+            <Button v-if="form.trade_references.length < 3" type="button" variant="outline" @click="addTradeReference"><Plus class="size-4" /> Add trade reference</Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle class="text-base">Account contact person</CardTitle><CardDescription>The person we deal with on the account (if different from the owner).</CardDescription></CardHeader>
+          <CardContent class="grid gap-4 sm:grid-cols-3">
+            <FormField label="Name" :error="form.errors.account_contact_name" required><Input v-model="form.account_contact_name" /></FormField>
+            <FormField label="Email" :error="form.errors.account_contact_email" required><Input v-model="form.account_contact_email" type="email" /></FormField>
+            <FormField label="Phone" :error="form.errors.account_contact_phone" required><Input v-model="form.account_contact_phone" /></FormField>
           </CardContent>
         </Card>
 

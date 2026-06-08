@@ -7,6 +7,8 @@
 
     @include('pdf.partials.company')
 
+    @include('pdf.partials.cod-consent')
+
     @include('pdf.partials.signature')
 
     @include('pdf.partials.terms')

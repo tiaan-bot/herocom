@@ -68,7 +68,28 @@ function creditApplyPayload(array $overrides = []): array
         'credit_terms_requested_days' => 30,
         'annual_turnover_band' => 'under_2m',
         'credit_enquiry_consent' => true,
-        'cgic_payload' => ['banking' => ['bank' => 'Demo Bank']],
+        // Credit-only company details
+        'company_telephone' => '0110000000',
+        'company_fax' => '0110000009',
+        'postal_address_line1' => 'PO Box 1',
+        'postal_province' => 'Gauteng',
+        'postal_postal_code' => '2001',
+        // Account contact person
+        'account_contact_name' => 'Acc Contact',
+        'account_contact_email' => 'accounts@acme.test',
+        'account_contact_phone' => '0110000002',
+        'cgic_payload' => ['banking' => [
+            'bank' => 'Demo Bank',
+            'date_opened' => '2020-01-15',
+            'branch_name' => 'Demo Branch',
+            'branch_code' => '250655',
+            'account_type' => 'cheque',
+            'account_number' => '1234567890',
+            'account_name' => 'Acme Trading',
+        ]],
+        'trade_references' => [
+            ['company_name' => 'Supplier A', 'credit_limit' => 25000, 'account_held' => 'credit', 'terms_days' => 30],
+        ],
         'principals' => [
             ['full_name' => 'Jane', 'surname' => 'Doe', 'id_number' => '9001015800086', 'is_surety' => true],
         ],
@@ -128,6 +149,50 @@ it('creates a credit application with principals and credit fields', function ()
         ->and($application->credit_terms_requested_days)->toBe(30)
         ->and($application->principals)->toHaveCount(1)
         ->and($application->credit_enquiry_consent_at)->not->toBeNull();
+});
+
+it('persists the new credit fields: company details, banking, trade references and account contact', function () {
+    $this->post('/apply', creditApplyPayload())->assertRedirect(route('apply.success'));
+
+    $application = OnboardingApplication::sole();
+    $company = $application->company;
+
+    expect($company->telephone)->toBe('0110000000')
+        ->and($company->postal_address_line1)->toBe('PO Box 1')
+        ->and($company->postal_province)->toBe('Gauteng')
+        ->and($application->account_contact_name)->toBe('Acc Contact')
+        ->and($application->account_contact_email)->toBe('accounts@acme.test')
+        ->and($application->tradeReferences)->toHaveCount(1)
+        ->and($application->tradeReferences->first()->company_name)->toBe('Supplier A')
+        ->and($application->tradeReferences->first()->account_held->value)->toBe('credit')
+        ->and($application->tradeReferences->first()->terms_days)->toBe(30);
+
+    // Banking is persisted inside the encrypted cgic_payload.
+    $banking = json_decode($application->cgic_payload, true)['banking'];
+    expect($banking['branch_name'])->toBe('Demo Branch')
+        ->and($banking['account_type'])->toBe('cheque')
+        ->and($banking['account_number'])->toBe('1234567890');
+});
+
+it('requires the new credit fields (telephone, postal address, banking, trade references, account contact)', function () {
+    $payload = creditApplyPayload();
+    unset(
+        $payload['company_telephone'],
+        $payload['postal_address_line1'],
+        $payload['account_contact_name'],
+        $payload['trade_references'],
+    );
+    $payload['cgic_payload'] = ['banking' => ['bank' => 'Demo Bank']]; // missing branch/account fields
+
+    $this->post('/apply', $payload)->assertSessionHasErrors([
+        'company_telephone',
+        'postal_address_line1',
+        'account_contact_name',
+        'trade_references',
+        'cgic_payload.banking.branch_name',
+        'cgic_payload.banking.account_type',
+    ]);
+    expect(Company::count())->toBe(0);
 });
 
 it('rejects a credit application missing the deed of surety', function () {

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domain\Onboarding\Enums\AccountHeld;
 use App\Domain\Onboarding\Enums\ApplicationPdfStatus;
 use App\Domain\Onboarding\Enums\DocumentType;
 use App\Domain\Onboarding\Jobs\GenerateApplicationPdf;
@@ -9,6 +10,7 @@ use App\Domain\Onboarding\Models\Company;
 use App\Domain\Onboarding\Models\OnboardingApplication;
 use App\Domain\Onboarding\Models\OnboardingDocument;
 use App\Domain\Onboarding\Models\OnboardingPrincipal;
+use App\Domain\Onboarding\Models\OnboardingTradeReference;
 use App\Filament\Resources\OnboardingApplications\Pages\ViewOnboardingApplication;
 use App\Filament\Resources\OnboardingApplications\RelationManagers\DocumentsRelationManager;
 use App\Notifications\ApplicationReceivedNotification;
@@ -56,10 +58,45 @@ it('replaces the existing application-form pdf when regenerated', function () {
     expect($application->documents()->where('type', DocumentType::ApplicationForm)->count())->toBe(1);
 });
 
-it('renders the credit application form with the key fields', function () {
+it('renders the COD application with all company sections, consent and signatories', function () {
     $company = Company::factory()->create([
         'legal_name' => 'Acme Trading (Pty) Ltd',
         'registration_number' => '2019/123456/07',
+        'vat_number' => '4123456789',
+    ]);
+    $application = OnboardingApplication::factory()->create([
+        'company_id' => $company->id,
+        'signed_by_name' => 'Jane Doe',
+        'signed_by_capacity' => 'Director',
+    ]);
+
+    $html = view('pdf.application-cod', [
+        'application' => $application->load(['company', 'principals']),
+        'wordmark' => null,
+        'signature' => null,
+    ])->render();
+
+    expect($html)
+        ->toContain('Acme Trading (Pty) Ltd')
+        ->toContain('4123456789')
+        ->toContain('Registered name')
+        ->toContain('Date of registration')   // gap field still labelled
+        ->toContain('Postal address')         // gap field still labelled
+        ->toContain('Premises owned')
+        ->toContain('Consent')
+        ->toContain('Signatories')
+        ->toContain('Jane Doe');
+});
+
+it('renders the credit application with every captured section populated', function () {
+    $company = Company::factory()->create([
+        'legal_name' => 'Acme Trading (Pty) Ltd',
+        'registration_number' => '2019/123456/07',
+        'date_of_registration' => '2018-03-04',
+        'telephone' => '011 555 0100',
+        'postal_address_line1' => 'PO Box 42',
+        'postal_province' => 'Gauteng',
+        'postal_postal_code' => '2001',
     ]);
     $application = OnboardingApplication::factory()->credit()->create([
         'company_id' => $company->id,
@@ -71,22 +108,71 @@ it('renders the credit application form with the key fields', function () {
         'full_name' => 'Jane',
         'surname' => 'Doe',
         'id_number' => '9001015800086',
+        'shareholding_percent' => 100,
+    ]);
+    OnboardingTradeReference::factory()->create([
+        'onboarding_application_id' => $application->id,
+        'company_name' => 'Supplier A',
+        'account_held' => AccountHeld::Credit,
+        'terms_days' => 30,
     ]);
 
     $html = view('pdf.application-credit', [
-        'application' => $application->load(['company', 'principals']),
+        'application' => $application->load(['company', 'principals', 'tradeReferences']),
         'wordmark' => null,
         'signature' => null,
     ])->render();
 
     expect($html)
-        ->toContain('Acme Trading (Pty) Ltd')   // company name
-        ->toContain('2019/123456/07')            // registration number
-        ->toContain('Jane Doe')                  // signatory
-        ->toContain('Credit');                   // account type
+        ->toContain('Acme Trading (Pty) Ltd')                       // company
+        ->toContain('04 March 2018')                                // date of registration
+        ->toContain('PO Box 42')                                    // postal address
+        ->toContain('011 555 0100')                                 // company telephone
+        ->toContain('Proprietors / directors / members / partners') // principals section
+        ->toContain('9001015800086')                                // principal ID
+        ->toContain('Banking details')
+        ->toContain('Demo Bank')                                    // banking institution
+        ->toContain('Demo Branch')                                  // branch name (now captured)
+        ->toContain('Cheque')                                       // account type (now captured)
+        ->toContain('Supplier A')                                   // trade reference (now captured)
+        ->toContain('Credit requirements')
+        ->toContain('Less than R2,000,000')                         // turnover band mapped
+        ->toContain('Security / legal compliance')
+        ->toContain('Account contact')                              // account contact section
+        ->toContain('Signatories');
 });
 
-it('appends the standard terms & conditions on both templates, on a fresh page, version-tagged', function () {
+it('renders the verbatim consent blocks before the signatories, with no reconstructed notes', function () {
+    $cod = OnboardingApplication::factory()->create();
+    $credit = OnboardingApplication::factory()->credit()->create();
+
+    $codHtml = view('pdf.application-cod', [
+        'application' => $cod->load(['company', 'principals']), 'wordmark' => null, 'signature' => null,
+    ])->render();
+    $creditHtml = view('pdf.application-credit', [
+        'application' => $credit->load(['company', 'principals', 'tradeReferences']), 'wordmark' => null, 'signature' => null,
+    ])->render();
+
+    // COD consent (verbatim).
+    expect($codHtml)
+        ->toContain('I/We warrant that all information provided in this application is true and correct.')
+        ->toContain('signed of my/our own free will')
+        ->not->toContain('reconstructed');
+
+    // Credit consent (verbatim) incl. RIA bullets + the 2.36% interest clause.
+    expect($creditHtml)
+        ->toContain('I/We warrant that all information provided in this application is true and correct.')
+        ->toContain('Protection of Personal Information Act (POPI)')
+        ->toContain('May access the database of any Risk Information Agency prior to granting credit;')
+        ->toContain('Interest at 2.36% will be applied to finance accounts after 30 days;')
+        ->toContain('May record the existence of the Customer')
+        ->not->toContain('reconstructed');
+
+    // Consent sits before the terms (which end the document, after the signatories).
+    expect(strpos($creditHtml, 'Risk Information Agency'))->toBeLessThan(strpos($creditHtml, 'Signatories'));
+});
+
+it('appends the verbatim standard terms & conditions on both templates, on a fresh page', function () {
     $cod = OnboardingApplication::factory()->create();
     $credit = OnboardingApplication::factory()->credit()->create();
 
@@ -98,11 +184,14 @@ it('appends the standard terms & conditions on both templates, on a fresh page, 
         ])->render();
 
         expect($html)
-            ->toContain('class="terms"')                       // wrapper that page-breaks before
-            ->toContain('Standard Terms')                      // heading
-            ->toContain('Version 2026-01')                     // version tag matches the declaration
-            ->toContain('Retention of title')                  // a numbered clause is present
-            ->toContain('revert to the COD Sale Agreement');  // clause 7.6 preserved
+            ->toContain('class="terms"')                                 // page-breaks before
+            ->toContain('Standard Terms')                                // heading
+            ->toContain('Version 2026-01')                               // version tag
+            ->toContain('1. INTERPRETATION AND DEFINITIONS')             // first clause (verbatim)
+            ->toContain('18. NOTICES AND DOMICILIA')                     // last clause (all 18 present)
+            ->toContain('Regulation 19(4) of the National Credit Act')   // verbatim clause 6
+            ->toContain('voetstoots')                                    // verbatim clause 10/11
+            ->toContain("Magistrates' Court Act 32 of 1944");            // verbatim clause 17
     }
 });
 

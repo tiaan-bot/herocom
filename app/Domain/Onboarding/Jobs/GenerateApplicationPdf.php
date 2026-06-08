@@ -46,7 +46,7 @@ final class GenerateApplicationPdf implements ShouldQueue
 
     public function handle(PDF $pdf, FilesystemFactory $filesystem): void
     {
-        $application = $this->application->loadMissing(['company', 'principals']);
+        $application = $this->application->loadMissing(['company', 'principals', 'tradeReferences']);
 
         $diskName = (string) config('onboarding.documents.disk');
         $disk = $filesystem->disk($diskName);

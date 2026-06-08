@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Web;
 
 use App\Domain\Onboarding\Actions\SubmitOnboardingApplicationAction;
+use App\Domain\Onboarding\Enums\AccountHeld;
 use App\Domain\Onboarding\Enums\AccountType;
+use App\Domain\Onboarding\Enums\BankAccountType;
 use App\Domain\Onboarding\Enums\DocumentType;
 use App\Domain\Onboarding\Enums\EntityType;
 use App\Domain\Onboarding\Enums\TurnoverBand;
@@ -27,6 +29,8 @@ class OnboardingApplicationController extends Controller
             'entityTypes' => $this->options(EntityType::cases()),
             'turnoverBands' => $this->options(TurnoverBand::cases()),
             'creditTermsDays' => [7, 15, 30],
+            'bankAccountTypes' => $this->options(BankAccountType::cases()),
+            'accountHeldOptions' => $this->options(AccountHeld::cases()),
             'documentTypes' => $this->documentTypes(),
         ]);
     }

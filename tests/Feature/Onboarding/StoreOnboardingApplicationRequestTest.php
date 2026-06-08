@@ -80,8 +80,23 @@ it('requires the deed of surety and credit fields on the credit branch', functio
         'credit_limit_requested' => 50000,
         'credit_terms_requested_days' => 30,
         'annual_turnover_band' => 'under_2m',
-        'cgic_payload' => ['banking' => ['bank' => 'Demo']],
         'credit_enquiry_consent' => true,
+        'company_telephone' => '0110000000',
+        'postal_address_line1' => 'PO Box 1',
+        'postal_province' => 'Gauteng',
+        'postal_postal_code' => '2001',
+        'account_contact_name' => 'Acc Contact',
+        'account_contact_email' => 'accounts@acme.test',
+        'account_contact_phone' => '0110000002',
+        'cgic_payload' => ['banking' => [
+            'bank' => 'Demo',
+            'branch_name' => 'Demo Branch',
+            'branch_code' => '250655',
+            'account_type' => 'cheque',
+            'account_number' => '1234567890',
+            'account_name' => 'Acme',
+        ]],
+        'trade_references' => [['company_name' => 'Supplier A', 'account_held' => 'credit', 'terms_days' => 30]],
         'principals' => [['full_name' => 'Jane', 'surname' => 'Doe', 'id_number' => '9001015800086']],
     ]);
     $payload['documents']['bank_confirmation'] = UploadedFile::fake()->create('bank.pdf', 50, 'application/pdf');
@@ -92,4 +107,42 @@ it('requires the deed of surety and credit fields on the credit branch', functio
 
     $payload['documents']['deed_of_surety'] = UploadedFile::fake()->create('deed.pdf', 50, 'application/pdf');
     expect(passesValidation($payload))->toBeTrue();
+});
+
+it('requires date of registration for a company entity on the credit branch but not a sole proprietor', function () {
+    $base = codPayload([
+        'account_type_requested' => 'credit',
+        'credit_limit_requested' => 50000,
+        'credit_terms_requested_days' => 30,
+        'annual_turnover_band' => 'under_2m',
+        'credit_enquiry_consent' => true,
+        'company_telephone' => '0110000000',
+        'postal_address_line1' => 'PO Box 1',
+        'postal_province' => 'Gauteng',
+        'postal_postal_code' => '2001',
+        'account_contact_name' => 'Acc',
+        'account_contact_email' => 'acc@acme.test',
+        'account_contact_phone' => '0110000002',
+        'cgic_payload' => ['banking' => [
+            'bank' => 'Demo', 'branch_name' => 'Demo Branch', 'branch_code' => '250655',
+            'account_type' => 'cheque', 'account_number' => '123', 'account_name' => 'Acme',
+        ]],
+        'trade_references' => [['company_name' => 'Ref', 'account_held' => 'cod']],
+        'principals' => [['full_name' => 'Jane', 'surname' => 'Doe', 'id_number' => '9001015800086']],
+    ]);
+    $base['documents']['bank_confirmation'] = UploadedFile::fake()->create('bank.pdf', 50, 'application/pdf');
+    $base['documents']['proof_of_address'] = UploadedFile::fake()->create('poa.pdf', 50, 'application/pdf');
+    $base['documents']['deed_of_surety'] = UploadedFile::fake()->create('deed.pdf', 50, 'application/pdf');
+
+    // Company entity (needs CIPC) without date of registration → fails.
+    $company = $base;
+    $company['entity_type'] = 'company';
+    $company['documents']['cipc_registration'] = UploadedFile::fake()->create('cipc.pdf', 50, 'application/pdf');
+    expect(passesValidation($company))->toBeFalse();
+
+    $company['date_of_registration'] = '2018-03-04';
+    expect(passesValidation($company))->toBeTrue();
+
+    // Sole proprietor without date of registration → still valid.
+    expect(passesValidation($base))->toBeTrue();
 });

@@ -60,6 +60,20 @@ final readonly class SubmitOnboardingApplicationData
         public ?TurnoverBand $annualTurnoverBand = null,
         public ?array $cgicPayload = null,
         public bool $creditEnquiryConsent = false,
+        // Credit branch — extra company details
+        public ?string $dateOfRegistration = null,
+        public ?string $companyTelephone = null,
+        public ?string $companyFax = null,
+        public ?string $postalAddressLine1 = null,
+        public ?string $postalProvince = null,
+        public ?string $postalPostalCode = null,
+        // Credit branch — account contact person (distinct from the applicant)
+        public ?string $accountContactName = null,
+        public ?string $accountContactEmail = null,
+        public ?string $accountContactPhone = null,
+        // Credit branch — trade references (1–3)
+        /** @var list<TradeReferenceData> */
+        public array $tradeReferences = [],
     ) {}
 
     public function isCredit(): bool

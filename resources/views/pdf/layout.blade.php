@@ -33,6 +33,14 @@
         .terms .clause p { margin: 3px 0; line-height: 1.4; text-align: justify; }
         .terms .sub { margin: 2px 0 2px 16px; line-height: 1.4; text-align: justify; }
         .terms .sub .n { display: inline-block; min-width: 26px; color: #56505d; }
+        .terms .subh { font-weight: bold; margin: 5px 0 2px 16px; }
+        .terms ul { margin: 3px 0 3px 34px; padding: 0; }
+        .terms li { line-height: 1.4; margin: 2px 0; text-align: justify; }
+
+        /* Consent blocks */
+        .consent p { margin: 3px 0; line-height: 1.4; text-align: justify; font-size: 10px; }
+        .consent ul { margin: 3px 0 3px 22px; }
+        .consent li { line-height: 1.4; margin: 2px 0; text-align: justify; font-size: 10px; }
     </style>
 </head>
 <body>

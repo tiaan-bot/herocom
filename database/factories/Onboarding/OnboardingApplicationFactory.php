@@ -53,10 +53,20 @@ class OnboardingApplicationFactory extends Factory
             'credit_terms_requested_days' => 30,
             'annual_turnover_band' => TurnoverBand::Under2m,
             'credit_enquiry_consent_at' => now(),
+            'account_contact_name' => 'Account Contact',
+            'account_contact_email' => 'accounts@demo.test',
+            'account_contact_phone' => '0110000001',
             'cgic_payload' => json_encode([
-                'banking' => ['bank' => 'Demo Bank', 'account_type' => 'cheque'],
-                'trade_references' => [['name' => 'Ref One'], ['name' => 'Ref Two'], ['name' => 'Ref Three']],
-                'legal_disclosures' => ['judgements' => false, 'liquidations' => false],
+                'banking' => [
+                    'bank' => 'Demo Bank',
+                    'date_opened' => '2020-01-15',
+                    'branch_name' => 'Demo Branch',
+                    'branch_code' => '250655',
+                    'account_type' => 'cheque',
+                    'account_number' => '1234567890',
+                    'account_name' => 'Demo Trading',
+                ],
+                'disclosures' => ['judgements' => false, 'liquidations' => false, 'sureties_cessions' => false, 'moratoriums' => false],
             ]),
         ]);
     }

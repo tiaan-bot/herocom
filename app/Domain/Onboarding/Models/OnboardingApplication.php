@@ -53,6 +53,9 @@ class OnboardingApplication extends Model
         'contact_name',
         'contact_email',
         'contact_phone',
+        'account_contact_name',
+        'account_contact_email',
+        'account_contact_phone',
         'premises_owned',
         'landlord_name',
         'landlord_address',
@@ -138,6 +141,14 @@ class OnboardingApplication extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(OnboardingDocument::class);
+    }
+
+    /**
+     * @return HasMany<OnboardingTradeReference, $this>
+     */
+    public function tradeReferences(): HasMany
+    {
+        return $this->hasMany(OnboardingTradeReference::class);
     }
 
     /**

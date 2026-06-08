@@ -7,7 +7,10 @@ namespace App\Http\Requests;
 use App\Domain\Onboarding\DataTransferObjects\DocumentUploadData;
 use App\Domain\Onboarding\DataTransferObjects\PrincipalData;
 use App\Domain\Onboarding\DataTransferObjects\SubmitOnboardingApplicationData;
+use App\Domain\Onboarding\DataTransferObjects\TradeReferenceData;
+use App\Domain\Onboarding\Enums\AccountHeld;
 use App\Domain\Onboarding\Enums\AccountType;
+use App\Domain\Onboarding\Enums\BankAccountType;
 use App\Domain\Onboarding\Enums\DocumentType;
 use App\Domain\Onboarding\Enums\EntityType;
 use App\Domain\Onboarding\Enums\TurnoverBand;
@@ -39,6 +42,10 @@ class StoreOnboardingApplicationRequest extends FormRequest
             'address_line2', 'landlord_name', 'landlord_address', 'landlord_tel',
             'period_at_address', 'credit_limit_requested', 'credit_terms_requested_days',
             'annual_turnover_band',
+            // Credit-branch extras (blank on the COD branch).
+            'date_of_registration', 'company_telephone', 'company_fax',
+            'postal_address_line1', 'postal_province', 'postal_postal_code',
+            'account_contact_name', 'account_contact_email', 'account_contact_phone',
         ];
 
         $merge = [];
@@ -102,6 +109,36 @@ class StoreOnboardingApplicationRequest extends FormRequest
             'credit_terms_requested_days' => [Rule::requiredIf($isCredit), 'nullable', 'integer', Rule::in([7, 15, 30])],
             'annual_turnover_band' => [Rule::requiredIf($isCredit), 'nullable', new Enum(TurnoverBand::class)],
             'cgic_payload' => [Rule::requiredIf($isCredit), 'nullable', 'array'],
+
+            // Credit branch — extra company details. Date of registration is required
+            // for registered companies and close corporations, optional otherwise.
+            'date_of_registration' => [Rule::requiredIf($isCredit && $needsCipc), 'nullable', 'date'],
+            'company_telephone' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:40'],
+            'company_fax' => ['nullable', 'string', 'max:40'],
+            'postal_address_line1' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:255'],
+            'postal_province' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:255'],
+            'postal_postal_code' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:20'],
+
+            // Credit branch — banking (stored inside the encrypted cgic_payload)
+            'cgic_payload.banking.bank' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:255'],
+            'cgic_payload.banking.date_opened' => ['nullable', 'date'],
+            'cgic_payload.banking.branch_name' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:255'],
+            'cgic_payload.banking.branch_code' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:50'],
+            'cgic_payload.banking.account_type' => [Rule::requiredIf($isCredit), 'nullable', new Enum(BankAccountType::class)],
+            'cgic_payload.banking.account_number' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:50'],
+            'cgic_payload.banking.account_name' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:255'],
+
+            // Credit branch — account contact person (distinct from the applicant)
+            'account_contact_name' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:255'],
+            'account_contact_email' => [Rule::requiredIf($isCredit), 'nullable', 'email', 'max:255'],
+            'account_contact_phone' => [Rule::requiredIf($isCredit), 'nullable', 'string', 'max:40'],
+
+            // Credit branch — trade references (1–3)
+            'trade_references' => [Rule::requiredIf($isCredit), 'array', ...($isCredit ? ['min:1', 'max:3'] : ['max:3'])],
+            'trade_references.*.company_name' => ['required', 'string', 'max:255'],
+            'trade_references.*.credit_limit' => ['nullable', 'numeric', 'min:0'],
+            'trade_references.*.account_held' => ['required', new Enum(AccountHeld::class)],
+            'trade_references.*.terms_days' => ['nullable', 'integer', Rule::in([7, 15, 30])],
 
             // Principals / sureties (credit path)
             'principals' => [Rule::requiredIf($isCredit), 'array', ...($isCredit ? ['min:1'] : [])],
@@ -183,7 +220,33 @@ class StoreOnboardingApplicationRequest extends FormRequest
             annualTurnoverBand: $this->filled('annual_turnover_band') ? TurnoverBand::from((string) $this->string('annual_turnover_band')) : null,
             cgicPayload: $this->input('cgic_payload'),
             creditEnquiryConsent: $isCredit && $this->boolean('credit_enquiry_consent'),
+            dateOfRegistration: $this->input('date_of_registration'),
+            companyTelephone: $this->input('company_telephone'),
+            companyFax: $this->input('company_fax'),
+            postalAddressLine1: $this->input('postal_address_line1'),
+            postalProvince: $this->input('postal_province'),
+            postalPostalCode: $this->input('postal_postal_code'),
+            accountContactName: $this->input('account_contact_name'),
+            accountContactEmail: $this->input('account_contact_email'),
+            accountContactPhone: $this->input('account_contact_phone'),
+            tradeReferences: $this->tradeReferenceData(),
         );
+    }
+
+    /**
+     * @return list<TradeReferenceData>
+     */
+    private function tradeReferenceData(): array
+    {
+        /** @var array<int, array<string, mixed>> $references */
+        $references = $this->input('trade_references', []);
+
+        return array_map(fn (array $r): TradeReferenceData => new TradeReferenceData(
+            companyName: (string) ($r['company_name'] ?? ''),
+            creditLimit: isset($r['credit_limit']) && $r['credit_limit'] !== '' ? (float) $r['credit_limit'] : null,
+            accountHeld: AccountHeld::from((string) ($r['account_held'] ?? AccountHeld::Cod->value)),
+            termsDays: isset($r['terms_days']) && $r['terms_days'] !== '' ? (int) $r['terms_days'] : null,
+        ), array_values($references));
     }
 
     /**

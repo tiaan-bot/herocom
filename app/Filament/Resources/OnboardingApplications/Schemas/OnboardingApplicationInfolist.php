@@ -33,8 +33,18 @@ class OnboardingApplicationInfolist
                         TextEntry::make('company.trading_name')->label('Trading name')->placeholder('—'),
                         TextEntry::make('company.entity_type')->label('Entity type')->badge(),
                         TextEntry::make('company.registration_number')->label('Registration no.')->placeholder('—'),
+                        TextEntry::make('company.date_of_registration')->label('Date of registration')->date()->placeholder('—'),
                         TextEntry::make('company.vat_number')->label('VAT no.')->placeholder('—'),
                         TextEntry::make('company.nature_of_business')->label('Nature of business')->placeholder('—'),
+                        TextEntry::make('company.telephone')->label('Telephone')->placeholder('—'),
+                        TextEntry::make('company.fax')->label('Fax')->placeholder('—'),
+                        TextEntry::make('company.postal_address_line1')->label('Postal address')
+                            ->formatStateUsing(fn (OnboardingApplication $record): string => collect([
+                                $record->company->postal_address_line1,
+                                $record->company->postal_province,
+                                $record->company->postal_postal_code,
+                            ])->filter()->join(', ') ?: '—')
+                            ->columnSpanFull(),
                         TextEntry::make('company.address_line1')->label('Address')
                             ->formatStateUsing(fn (OnboardingApplication $record): string => collect([
                                 $record->company->address_line1,
@@ -54,6 +64,9 @@ class OnboardingApplicationInfolist
                         TextEntry::make('credit_limit_requested')->label('Limit requested')->money(fn (OnboardingApplication $record): string => $record->credit_limit_requested_currency),
                         TextEntry::make('credit_terms_requested_days')->label('Terms (days)')->suffix(' days'),
                         TextEntry::make('annual_turnover_band')->label('Turnover band')->badge(),
+                        TextEntry::make('account_contact_name')->label('Account contact')->placeholder('—'),
+                        TextEntry::make('account_contact_email')->label('Account contact email')->placeholder('—'),
+                        TextEntry::make('account_contact_phone')->label('Account contact phone')->placeholder('—'),
                     ]),
 
                 Section::make('CGIC')

@@ -7,6 +7,7 @@ use App\Filament\Resources\OnboardingApplications\Pages\ListOnboardingApplicatio
 use App\Filament\Resources\OnboardingApplications\Pages\ViewOnboardingApplication;
 use App\Filament\Resources\OnboardingApplications\RelationManagers\DocumentsRelationManager;
 use App\Filament\Resources\OnboardingApplications\RelationManagers\PrincipalsRelationManager;
+use App\Filament\Resources\OnboardingApplications\RelationManagers\TradeReferencesRelationManager;
 use App\Filament\Resources\OnboardingApplications\Schemas\OnboardingApplicationInfolist;
 use App\Filament\Resources\OnboardingApplications\Tables\OnboardingApplicationsTable;
 use BackedEnum;
@@ -46,6 +47,7 @@ class OnboardingApplicationResource extends Resource
     {
         return [
             PrincipalsRelationManager::class,
+            TradeReferencesRelationManager::class,
             DocumentsRelationManager::class,
         ];
     }
