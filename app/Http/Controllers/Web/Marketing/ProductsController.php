@@ -38,13 +38,14 @@ class ProductsController extends Controller
      */
     private function featured(): array
     {
-        $featured = Product::query()->active()->featured()
+        // Featured implies synced — only portal-visible products are shown publicly.
+        $featured = Product::query()->active()->where('sync_to_portal', true)->featured()
             ->orderBy('name')
             ->limit(self::FEATURED_LIMIT)
             ->get();
 
         if ($featured->count() < self::FEATURED_LIMIT) {
-            $fill = Product::query()->active()
+            $fill = Product::query()->active()->where('sync_to_portal', true)
                 ->whereNotIn('id', $featured->modelKeys())
                 ->orderByDesc('last_synced_at')
                 ->orderByDesc('id')

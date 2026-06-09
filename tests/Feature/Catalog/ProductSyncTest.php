@@ -44,18 +44,35 @@ function zohoItem(array $overrides = []): array
     ], $overrides);
 }
 
+/**
+ * Fake the Zoho item endpoints. The detail endpoint (items/{id}) is matched
+ * separately from the list endpoint (items?...) so per-item detail fetches don't
+ * consume the list sequence. `$detailHash` is the custom_field_hash returned for
+ * every item's detail (defaults to empty → unticked).
+ *
+ * @param  array<int, array<int, array<string, mixed>>>  $listPages
+ * @param  array<string, mixed>  $detailHash
+ */
+function fakeZohoItems(array $listPages, array $detailHash = []): void
+{
+    $sequence = Http::sequence();
+    foreach ($listPages as $page) {
+        $sequence->push(['items' => $page]);
+    }
+
+    Http::fake([
+        '*/books/v3/items/*' => Http::response(['item' => ['custom_field_hash' => $detailHash]]),
+        '*/books/v3/items?*' => $sequence,
+    ]);
+}
+
 function sync(bool $full = true): void
 {
     app(SyncProductsFromZoho::class)->execute($full);
 }
 
 it('upserts items idempotently — re-running changes nothing', function () {
-    Http::fake(['*/books/v3/items*' => Http::sequence()
-        ->push(['items' => [zohoItem(['rate' => 100])]])
-        ->push(['items' => []])
-        ->push(['items' => [zohoItem(['rate' => 100])]])
-        ->push(['items' => []]),
-    ]);
+    fakeZohoItems([[zohoItem(['rate' => 100])], [], [zohoItem(['rate' => 100])], []]);
 
     sync();
     $first = Product::sole();
@@ -69,10 +86,7 @@ it('upserts items idempotently — re-running changes nothing', function () {
 it('marks products missing from a full sync as inactive', function () {
     Product::factory()->create(['zoho_item_id' => 'gone', 'status' => ProductStatus::Active]);
 
-    Http::fake(['*/books/v3/items*' => Http::sequence()
-        ->push(['items' => [zohoItem(['item_id' => '1001'])]])
-        ->push(['items' => []]),
-    ]);
+    fakeZohoItems([[zohoItem(['item_id' => '1001'])], []]);
 
     sync(full: true);
 
@@ -81,10 +95,10 @@ it('marks products missing from a full sync as inactive', function () {
 });
 
 it('walks all pages', function () {
-    Http::fake(['*/books/v3/items*' => Http::sequence()
-        ->push(['items' => [zohoItem(['item_id' => '1']), zohoItem(['item_id' => '2'])]])
-        ->push(['items' => [zohoItem(['item_id' => '3'])]])
-        ->push(['items' => []]),
+    fakeZohoItems([
+        [zohoItem(['item_id' => '1']), zohoItem(['item_id' => '2'])],
+        [zohoItem(['item_id' => '3'])],
+        [],
     ]);
 
     app(SyncProductsFromZoho::class)->execute(full: true);
@@ -95,10 +109,12 @@ it('walks all pages', function () {
 it('retries on 429 then syncs', function () {
     Sleep::fake();
 
-    Http::fake(['*/books/v3/items*' => Http::sequence()
-        ->push('', 429, ['Retry-After' => '1'])
-        ->push(['items' => [zohoItem(['item_id' => '1'])]])
-        ->push(['items' => []]),
+    Http::fake([
+        '*/books/v3/items/*' => Http::response(['item' => ['custom_field_hash' => []]]),
+        '*/books/v3/items?*' => Http::sequence()
+            ->push('', 429, ['Retry-After' => '1'])
+            ->push(['items' => [zohoItem(['item_id' => '1'])]])
+            ->push(['items' => []]),
     ]);
 
     sync(full: true);
@@ -107,10 +123,7 @@ it('retries on 429 then syncs', function () {
 });
 
 it('maps Zoho fields and marks inactive items', function () {
-    Http::fake(['*/books/v3/items*' => Http::sequence()
-        ->push(['items' => [zohoItem(['item_id' => '9', 'name' => 'Dead SKU', 'status' => 'inactive', 'rate' => 250.5])]])
-        ->push(['items' => []]),
-    ]);
+    fakeZohoItems([[zohoItem(['item_id' => '9', 'name' => 'Dead SKU', 'status' => 'inactive', 'rate' => 250.5])], []]);
 
     sync();
 
@@ -122,14 +135,60 @@ it('maps Zoho fields and marks inactive items', function () {
 });
 
 it('zoho:sync-products --full reports a summary', function () {
-    Http::fake(['*/books/v3/items*' => Http::sequence()
-        ->push(['items' => [zohoItem(['item_id' => '1'])]])
-        ->push(['items' => []]),
-    ]);
+    fakeZohoItems([[zohoItem(['item_id' => '1'])], []]);
 
     $this->artisan('zoho:sync-products', ['--full' => true])
         ->assertSuccessful()
         ->expectsOutputToContain('Synced 1');
 
     expect(Product::count())->toBe(1);
+});
+
+// --- cf_sync_to_portal gating ---------------------------------------------
+
+it('sets sync_to_portal true when the item is ticked in Zoho', function () {
+    fakeZohoItems([[zohoItem(['item_id' => '1001'])], []], [
+        // The plain key is the string "true"; the unformatted key is the boolean.
+        'cf_sync_to_portal' => 'true',
+        'cf_sync_to_portal_unformatted' => true,
+    ]);
+
+    sync();
+
+    expect(Product::where('zoho_item_id', '1001')->sole()->sync_to_portal)->toBeTrue();
+});
+
+it('sets sync_to_portal false when the flag key is absent (unticked)', function () {
+    fakeZohoItems([[zohoItem(['item_id' => '1001'])], []], []); // empty custom_field_hash
+
+    sync();
+
+    expect(Product::where('zoho_item_id', '1001')->sole()->sync_to_portal)->toBeFalse();
+});
+
+it('flips sync_to_portal back to false when Zoho is unticked on a later sync', function () {
+    // Two syncs under one fake (Http::fake merges, so re-faking would not replace a
+    // spent sequence): list page1/empty twice; detail ticked then unticked.
+    Http::fake([
+        '*/books/v3/items/*' => Http::sequence()
+            ->push(['item' => ['custom_field_hash' => ['cf_sync_to_portal_unformatted' => true]]])
+            ->push(['item' => ['custom_field_hash' => []]]),
+        '*/books/v3/items?*' => Http::sequence()
+            ->push(['items' => [zohoItem(['item_id' => '1001'])]])->push(['items' => []])
+            ->push(['items' => [zohoItem(['item_id' => '1001'])]])->push(['items' => []]),
+    ]);
+
+    sync();
+    expect(Product::where('zoho_item_id', '1001')->sole()->sync_to_portal)->toBeTrue();
+
+    sync();
+    expect(Product::where('zoho_item_id', '1001')->sole()->sync_to_portal)->toBeFalse();
+});
+
+it('does not treat the string "true" alone as ticked (must be the boolean)', function () {
+    fakeZohoItems([[zohoItem(['item_id' => '1001'])], []], ['cf_sync_to_portal' => 'true']); // no _unformatted
+
+    sync();
+
+    expect(Product::where('zoho_item_id', '1001')->sole()->sync_to_portal)->toBeFalse();
 });

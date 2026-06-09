@@ -32,9 +32,17 @@ class ProductFactory extends Factory
             'brand' => $this->faker->randomElement(['Acme', 'Globex', 'Initech', null]),
             'category' => $this->faker->randomElement(['Networking', 'Storage', 'Peripherals', null]),
             'status' => ProductStatus::Active,
+            // Test fixtures are portal-visible by default (the DB column default is
+            // false; production stays hidden until a sync confirms the Zoho tick).
+            'sync_to_portal' => true,
             'zoho_last_modified_at' => now(),
             'last_synced_at' => now(),
         ];
+    }
+
+    public function hiddenFromPortal(): static
+    {
+        return $this->state(fn (): array => ['sync_to_portal' => false]);
     }
 
     public function inactive(): static

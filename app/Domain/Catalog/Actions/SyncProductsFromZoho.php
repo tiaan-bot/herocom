@@ -39,9 +39,17 @@ final class SyncProductsFromZoho
                     continue;
                 }
 
+                // The list endpoint omits custom fields, so the "Sync to portal"
+                // flag must be read from each item's detail. Zoho-owned: written
+                // on every run (Zoho wins), absent key => false.
+                $detail = $this->zoho->getItem($zohoItemId);
+
+                $attributes = $this->attributes($item, $now);
+                $attributes['sync_to_portal'] = $this->isSyncedToPortal($detail);
+
                 Product::query()->updateOrCreate(
                     ['zoho_item_id' => $zohoItemId],
-                    $this->attributes($item, $now),
+                    $attributes,
                 );
 
                 $seen[] = $zohoItemId;
@@ -60,6 +68,31 @@ final class SyncProductsFromZoho
         }
 
         return new ProductSyncResult($synced, $deactivated);
+    }
+
+    /**
+     * Read the Zoho "Sync to portal" checkbox from an item's detail payload.
+     * Truthy only when the unformatted (boolean) custom field is true — the plain
+     * custom_field_hash.cf_sync_to_portal is the string "true" and must not be
+     * compared. Absent key => false.
+     *
+     * @param  array<string, mixed>  $detail
+     */
+    private function isSyncedToPortal(array $detail): bool
+    {
+        $hash = $detail['custom_field_hash'] ?? [];
+        if (is_array($hash) && array_key_exists('cf_sync_to_portal_unformatted', $hash)) {
+            return $hash['cf_sync_to_portal_unformatted'] === true;
+        }
+
+        // Fallback: the custom_fields[] entry carries a boolean `value`.
+        foreach ($detail['custom_fields'] ?? [] as $field) {
+            if (is_array($field) && ($field['api_name'] ?? null) === 'cf_sync_to_portal') {
+                return ($field['value'] ?? null) === true;
+            }
+        }
+
+        return false;
     }
 
     /**

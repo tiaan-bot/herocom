@@ -26,7 +26,8 @@ class CatalogController extends Controller
         $discount = $this->companyDiscount($request);
         $threshold = (int) config('catalog.low_stock_threshold', 5);
 
-        $query = Product::query()->active();
+        // Only products ticked "Sync to portal" in Zoho are visible to dealers.
+        $query = Product::query()->active()->where('sync_to_portal', true);
 
         if (filled($search = trim((string) $request->string('q')))) {
             $like = '%'.mb_strtolower($search).'%';
@@ -68,14 +69,15 @@ class CatalogController extends Controller
                 'in_stock' => $request->boolean('in_stock'),
                 'sort' => $request->string('sort')->toString(),
             ],
-            'brands' => Product::query()->active()->whereNotNull('brand')->distinct()->orderBy('brand')->pluck('brand'),
-            'categories' => Product::query()->active()->whereNotNull('category')->distinct()->orderBy('category')->pluck('category'),
+            'brands' => Product::query()->active()->where('sync_to_portal', true)->whereNotNull('brand')->distinct()->orderBy('brand')->pluck('brand'),
+            'categories' => Product::query()->active()->where('sync_to_portal', true)->whereNotNull('category')->distinct()->orderBy('category')->pluck('category'),
         ]);
     }
 
     public function show(Request $request, Product $product): Response
     {
-        abort_unless($product->status === ProductStatus::Active, 404);
+        // Hidden (not synced to portal) or inactive products are not viewable.
+        abort_unless($product->status === ProductStatus::Active && $product->sync_to_portal, 404);
 
         $discount = $this->companyDiscount($request);
         $threshold = (int) config('catalog.low_stock_threshold', 5);

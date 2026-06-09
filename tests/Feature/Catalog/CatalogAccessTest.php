@@ -68,6 +68,19 @@ it('excludes inactive products from the listing', function () {
             ->where('products.data.0.name', 'Active One'));
 });
 
+it('excludes products not synced to portal from the listing and 404s their detail', function () {
+    $reseller = approvedReseller();
+    Product::factory()->create(['name' => 'Synced One']);
+    $hidden = Product::factory()->hiddenFromPortal()->create(['name' => 'Not Synced One']);
+
+    $this->actingAs($reseller)
+        ->get('/catalog')
+        ->assertInertia(fn (Assert $page) => $page->has('products.data', 1)
+            ->where('products.data.0.name', 'Synced One'));
+
+    $this->actingAs($reseller)->get("/catalog/{$hidden->uuid}")->assertNotFound();
+});
+
 it('applies the company discount to displayed prices', function () {
     Product::factory()->create(['rate' => 100, 'name' => 'Widget']);
 

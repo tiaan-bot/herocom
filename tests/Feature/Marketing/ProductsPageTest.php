@@ -60,6 +60,17 @@ it('reports real active-product counts per category', function () {
         ->where('categoryCounts.Peripherals', 0));
 });
 
+it('excludes featured products that are not synced to portal', function () {
+    Product::factory()->featured()->hiddenFromPortal()->create(['name' => 'Featured but hidden']);
+    Product::factory()->featured()->create(['name' => 'Featured and synced']);
+
+    // Only the synced featured product appears; the hidden one is excluded even
+    // though it is flagged featured.
+    $this->get('/products')->assertInertia(fn (Assert $page) => $page
+        ->has('featured', 1)
+        ->where('featured.0.name', 'Featured and synced'));
+});
+
 it('does not mention CGIC anywhere on the products page', function () {
     $this->get('/products')->assertDontSee('CGIC', false);
 });

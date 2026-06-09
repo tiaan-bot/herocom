@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $category
  * @property ProductStatus $status
  * @property bool $is_featured
+ * @property bool $sync_to_portal
  */
 class Product extends Model
 {
@@ -45,6 +46,7 @@ class Product extends Model
         'image_url',
         'status',
         'is_featured',
+        'sync_to_portal',
         'zoho_last_modified_at',
         'last_synced_at',
     ];
@@ -59,6 +61,7 @@ class Product extends Model
             'stock_on_hand' => 'decimal:2',
             'status' => ProductStatus::class,
             'is_featured' => 'boolean',
+            'sync_to_portal' => 'boolean',
             'zoho_last_modified_at' => 'datetime',
             'last_synced_at' => 'datetime',
         ];

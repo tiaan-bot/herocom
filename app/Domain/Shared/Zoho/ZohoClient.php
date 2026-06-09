@@ -86,6 +86,22 @@ final class ZohoClient
     }
 
     /**
+     * Fetch a single item's full detail. Custom fields (e.g. cf_sync_to_portal)
+     * are only returned by this detail endpoint — the list endpoint omits them.
+     *
+     * @return array<string, mixed>
+     */
+    public function getItem(string $itemId): array
+    {
+        $json = $this->request('GET', "/books/v3/items/{$itemId}");
+
+        /** @var array<string, mixed> $item */
+        $item = $json['item'] ?? $json;
+
+        return $item;
+    }
+
+    /**
      * @param  array<string, mixed>  $filters  Extra query params (e.g. last_modified_time for incremental sync).
      * @return array<int, array<string, mixed>>
      */
