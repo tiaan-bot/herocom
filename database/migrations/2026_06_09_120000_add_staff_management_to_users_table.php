@@ -23,6 +23,13 @@ return new class extends Migration
             $table->softDeletes();
         });
 
+        // Belt-and-suspenders backfill: the NOT NULL DEFAULT true above already
+        // sets every pre-existing row active on Postgres 11+, but an explicit
+        // update guarantees existing staff (e.g. the bootstrap super_admin) stay
+        // active regardless of engine/column-nullability quirks. softDeletes()
+        // leaves deleted_at null, so no existing user is ever trashed by this run.
+        DB::table('users')->update(['is_active' => true]);
+
         Schema::table('users', function (Blueprint $table): void {
             $table->dropUnique(['email']);
         });
