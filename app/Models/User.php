@@ -28,6 +28,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property int|null $company_id
  * @property bool $is_active
  * @property Carbon|null $password_set_at
+ * @property Carbon|null $email_verified_at
  */
 class User extends Authenticatable implements FilamentUser, HasAppAuthentication, HasAppAuthenticationRecovery
 {

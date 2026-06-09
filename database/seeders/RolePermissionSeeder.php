@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Domain\Identity\Roles;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -95,6 +96,12 @@ class RolePermissionSeeder extends Seeder
     public function run(): void
     {
         app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        // Ensure all nine canonical roles exist (six internal + three reseller),
+        // sourced from the domain constant so this set can never drift from Roles.
+        foreach ([...Roles::INTERNAL, ...Roles::RESELLER] as $roleName) {
+            Role::findOrCreate($roleName, self::GUARD);
+        }
 
         foreach (self::PERMISSIONS as $permission) {
             Permission::firstOrCreate([
