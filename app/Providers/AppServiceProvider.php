@@ -17,6 +17,7 @@ use App\Domain\Ordering\Listeners\SendOrderConfirmationEmail;
 use App\Domain\Ordering\Models\Order;
 use App\Domain\Ordering\Policies\OrderPolicy;
 use App\Models\User;
+use App\Policies\UserPolicy;
 use Barryvdh\DomPDF\PDF;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -38,6 +39,7 @@ class AppServiceProvider extends ServiceProvider
         Company::class => CompanyPolicy::class,
         Order::class => OrderPolicy::class,
         Invoice::class => InvoicePolicy::class,
+        User::class => UserPolicy::class,
     ];
 
     /**

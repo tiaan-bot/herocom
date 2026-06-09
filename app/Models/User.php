@@ -3,14 +3,18 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Domain\Identity\Enums\StaffStatus;
 use App\Domain\Onboarding\Models\Company;
 use Database\Factories\UserFactory;
 use Filament\Auth\MultiFactor\App\Concerns\InteractsWithAppAuthentication;
 use Filament\Auth\MultiFactor\App\Concerns\InteractsWithAppAuthenticationRecovery;
 use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthentication;
 use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthenticationRecovery;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -22,12 +26,13 @@ use Spatie\Permission\Traits\HasRoles;
 /**
  * @property string $uuid
  * @property int|null $company_id
+ * @property bool $is_active
  * @property Carbon|null $password_set_at
  */
-class User extends Authenticatable implements HasAppAuthentication, HasAppAuthenticationRecovery
+class User extends Authenticatable implements FilamentUser, HasAppAuthentication, HasAppAuthenticationRecovery
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasRoles, InteractsWithAppAuthentication, InteractsWithAppAuthenticationRecovery, LogsActivity, Notifiable;
+    use HasFactory, HasRoles, InteractsWithAppAuthentication, InteractsWithAppAuthenticationRecovery, LogsActivity, Notifiable, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -39,6 +44,7 @@ class User extends Authenticatable implements HasAppAuthentication, HasAppAuthen
         'email',
         'password',
         'company_id',
+        'is_active',
     ];
 
     /**
@@ -62,7 +68,34 @@ class User extends Authenticatable implements HasAppAuthentication, HasAppAuthen
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'password_set_at' => 'datetime',
+            'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * Internal staff (no company) may reach the admin panel only while active.
+     * Resellers and deactivated users are blocked.
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return $this->is_active && $this->company_id === null;
+    }
+
+    /**
+     * Derived staff lifecycle state: deactivated wins, then a not-yet-activated
+     * invite (no password set), otherwise active.
+     */
+    public function staffStatus(): StaffStatus
+    {
+        if (! $this->is_active) {
+            return StaffStatus::Inactive;
+        }
+
+        if ($this->password_set_at === null) {
+            return StaffStatus::PendingInvite;
+        }
+
+        return StaffStatus::Active;
     }
 
     protected static function booted(): void
@@ -93,7 +126,7 @@ class User extends Authenticatable implements HasAppAuthentication, HasAppAuthen
     {
         return LogOptions::defaults()
             ->useLogName('user')
-            ->logOnly(['name', 'email'])
+            ->logOnly(['name', 'email', 'is_active'])
             ->logOnlyDirty()
             ->dontLogEmptyChanges();
     }
