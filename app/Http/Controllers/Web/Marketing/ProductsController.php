@@ -34,7 +34,7 @@ class ProductsController extends Controller
      * Up to 8 active products: those flagged featured (by name) first, then topped
      * up with the most recently synced products. No pricing — gated behind sign-in.
      *
-     * @return array<int, array{name: string, sku: string|null, brand: string|null, cat: string|null}>
+     * @return array<int, array{name: string, sku: string|null, brand: string|null, cat: string|null, image_url: string|null}>
      */
     private function featured(): array
     {
@@ -60,6 +60,7 @@ class ProductsController extends Controller
             'sku' => $product->sku,
             'brand' => $product->brand,
             'cat' => $product->category,
+            'image_url' => $product->image_url,
         ])->values()->all();
     }
 

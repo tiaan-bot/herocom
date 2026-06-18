@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Products\Tables;
 
 use App\Domain\Catalog\Enums\ProductStatus;
 use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -17,6 +18,12 @@ class ProductsTable
         return $table
             ->defaultSort('name')
             ->columns([
+                // Read-only thumbnail; image_url is the gated catalog.image route
+                // (a full URL), mirrored one-way from Zoho. Empty when no image.
+                ImageColumn::make('image_url')
+                    ->label('Image')
+                    ->square()
+                    ->size(40),
                 TextColumn::make('name')->searchable()->sortable()->limit(60),
                 TextColumn::make('sku')->label('SKU')->searchable()->sortable(),
                 TextColumn::make('brand')->searchable()->sortable(),

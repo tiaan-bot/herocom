@@ -9,13 +9,15 @@ import {
   Keyboard,
   Lock,
   Network,
-  Package,
   PlugZap,
 } from 'lucide-vue-next'
 import MarketingLayout from '@/Layouts/MarketingLayout.vue'
 import { Button } from '@/components/ui/button'
 
-interface Featured { name: string, sku: string | null, brand: string | null, cat: string | null }
+interface Featured { name: string, sku: string | null, brand: string | null, cat: string | null, image_url: string | null }
+
+// Heroic-purple fallback shown when a featured product has no synced image.
+const PLACEHOLDER = '/images/catalog/placeholder.svg'
 
 // Featured lines and per-category counts come from the synced catalogue (server).
 const props = defineProps<{
@@ -86,7 +88,7 @@ const brands = ['Hikvision', 'Ubiquiti', 'TP-Link', 'APC', 'Logitech', 'Mecer']
         </div>
         <div class="featured__grid">
           <div v-for="(p, i) in featured" :key="p.sku ?? `${p.name}-${i}`" class="fcard">
-            <div class="fcard__media"><Package /></div>
+            <div class="fcard__media"><img :src="p.image_url ?? PLACEHOLDER" :alt="p.name" loading="lazy"></div>
             <span v-if="p.cat" class="fcard__cat">{{ p.cat }}</span>
             <h3 class="fcard__name">{{ p.name }}</h3>
             <p class="fcard__meta">{{ [p.sku, p.brand].filter(Boolean).join(' · ') }}</p>

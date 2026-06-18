@@ -13,6 +13,7 @@ use App\Http\Controllers\Web\Marketing\HomeController;
 use App\Http\Controllers\Web\Marketing\ProductsController;
 use App\Http\Controllers\Web\OnboardingApplicationController;
 use App\Http\Controllers\Web\OrderController;
+use App\Http\Controllers\Web\ProductImageController;
 use App\Http\Middleware\EnsureApprovedReseller;
 use Illuminate\Support\Facades\Route;
 
@@ -46,6 +47,10 @@ Route::post('/apply', [OnboardingApplicationController::class, 'store'])
     ->middleware('throttle:5,60') // a few submissions per IP per hour
     ->name('apply.store');
 Route::inertia('/apply/success', 'Onboarding/Success')->name('apply.success');
+
+// Public product image (no auth): stable, cache-busted URL streamed from the
+// private catalogue disk. Gated on portal visibility inside the controller.
+Route::get('/catalog/{product:uuid}/image', ProductImageController::class)->name('catalog.image');
 
 // Gated portal: authenticated + approved reseller (or internal staff).
 Route::middleware(['auth', EnsureApprovedReseller::class])->group(function (): void {

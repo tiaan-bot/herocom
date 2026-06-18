@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
-import { ArrowLeft, Package, Plus } from 'lucide-vue-next'
+import { ArrowLeft, Plus } from 'lucide-vue-next'
 import PortalLayout from '@/Layouts/PortalLayout.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,6 +43,9 @@ const canPlaceOrders = computed(() => {
 
 const quantity = ref(1)
 
+// Heroic-purple fallback shown when a product has no synced image.
+const PLACEHOLDER = '/images/catalog/placeholder.svg'
+
 function addToCart(): void {
   router.post('/cart', { product: props.product.uuid, quantity: quantity.value }, { preserveScroll: true })
 }
@@ -56,9 +59,8 @@ function addToCart(): void {
     </Link>
 
     <div class="grid gap-8 md:grid-cols-2">
-      <div class="grid aspect-square place-items-center overflow-hidden rounded-lg border bg-muted">
-        <img v-if="product.image_url" :src="product.image_url" :alt="product.name" class="h-full w-full object-cover" />
-        <Package v-else class="size-20 text-muted-foreground/30" />
+      <div class="aspect-square overflow-hidden rounded-lg border bg-muted">
+        <img :src="product.image_url ?? PLACEHOLDER" :alt="product.name" class="h-full w-full object-cover" />
       </div>
 
       <div>
