@@ -167,6 +167,50 @@ final class ZohoClient
     }
 
     /**
+     * Fetch a single item's primary image as raw bytes. The response is the image
+     * itself (not JSON), so JSON decoding is bypassed and the MIME type is read
+     * from the Content-Type header. Returns null when the item has no image
+     * (Zoho answers 404) or the body is empty. Reuses the client's auth + retry.
+     *
+     * @return array{contents: string, mime: string}|null
+     */
+    public function fetchItemImage(string $itemId): ?array
+    {
+        $token = $this->accessToken();
+        $url = 'https://'.$this->config->get('zoho.api_domain')."/books/v3/items/{$itemId}/image";
+
+        $query = [];
+        $orgId = $this->config->get('zoho.organization_id');
+        if (filled($orgId)) {
+            $query['organization_id'] = $orgId;
+        }
+
+        $response = $this->sendImageWithRetry(
+            fn (): Response => $this->http
+                ->timeout((int) $this->config->get('zoho.timeout', 30))
+                ->withToken($token, 'Zoho-oauthtoken')
+                ->get($url, $query),
+        );
+
+        if ($response === null) {
+            return null;
+        }
+
+        $contents = $response->body();
+        if ($contents === '') {
+            return null;
+        }
+
+        // Content-Type may carry a charset/extra params — keep just the MIME.
+        $mime = trim(explode(';', (string) $response->header('Content-Type'))[0]);
+        if (! str_starts_with($mime, 'image/')) {
+            return null;
+        }
+
+        return ['contents' => $contents, 'mime' => $mime];
+    }
+
+    /**
      * Generic authenticated Books API call. Ensures a valid token, attaches the
      * Authorization header + organization_id, retries on 429/5xx with backoff.
      *
@@ -215,6 +259,38 @@ final class ZohoClient
 
             if ($response->successful()) {
                 return $response;
+            }
+
+            $retryable = $response->status() === 429 || $response->serverError();
+
+            if (! $retryable || $try >= $max) {
+                throw ZohoException::fromResponse($response);
+            }
+
+            Sleep::for($this->backoffMs($response, $try, $base))->milliseconds();
+        }
+    }
+
+    /**
+     * Like sendWithRetry, but for the raw-bytes image endpoint: a 404 means the
+     * item simply has no image, so it resolves to null rather than throwing.
+     *
+     * @param  callable(): Response  $attempt
+     */
+    private function sendImageWithRetry(callable $attempt): ?Response
+    {
+        $max = (int) $this->config->get('zoho.retry.max_attempts', 4);
+        $base = (int) $this->config->get('zoho.retry.base_backoff_ms', 1000);
+
+        for ($try = 1; ; $try++) {
+            $response = $attempt();
+
+            if ($response->successful()) {
+                return $response;
+            }
+
+            if ($response->status() === 404) {
+                return null;
             }
 
             $retryable = $response->status() === 429 || $response->serverError();

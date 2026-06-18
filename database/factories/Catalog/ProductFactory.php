@@ -59,4 +59,13 @@ class ProductFactory extends Factory
     {
         return $this->state(fn (): array => ['is_featured' => true]);
     }
+
+    public function withImage(string $documentId = 'doc-1', string $mime = 'image/png'): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'image_document_id' => $documentId,
+            'image_path' => 'products/'.($attributes['zoho_item_id'] ?? 'x').'.png',
+            'image_mime' => $mime,
+        ]);
+    }
 }

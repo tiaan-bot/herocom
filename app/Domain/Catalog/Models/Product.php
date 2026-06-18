@@ -8,6 +8,7 @@ use App\Domain\Catalog\Enums\ProductStatus;
 use App\Domain\Shared\Concerns\HasUuid;
 use Database\Factories\Catalog\ProductFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -21,9 +22,13 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $stock_on_hand
  * @property string|null $brand
  * @property string|null $category
+ * @property string|null $image_document_id
+ * @property string|null $image_path
+ * @property string|null $image_mime
  * @property ProductStatus $status
  * @property bool $is_featured
  * @property bool $sync_to_portal
+ * @property-read string|null $image_url
  */
 class Product extends Model
 {
@@ -43,7 +48,9 @@ class Product extends Model
         'unit',
         'brand',
         'category',
-        'image_url',
+        'image_document_id',
+        'image_path',
+        'image_mime',
         'status',
         'is_featured',
         'sync_to_portal',
@@ -65,6 +72,25 @@ class Product extends Model
             'zoho_last_modified_at' => 'datetime',
             'last_synced_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Public, cache-busting URL for the product image, or null when there is no
+     * stored image or the product is hidden from the portal. The `?v=` query is
+     * the Zoho document id, so the immutable cached URL changes when the image
+     * does. Returns the gated `catalog.image` route, never a bucket URL.
+     *
+     * @return Attribute<non-falsy-string|null, never>
+     */
+    protected function imageUrl(): Attribute
+    {
+        return Attribute::get(function (): ?string {
+            if ($this->image_path === null || ! $this->sync_to_portal) {
+                return null;
+            }
+
+            return route('catalog.image', $this).'?v='.$this->image_document_id;
+        });
     }
 
     /**

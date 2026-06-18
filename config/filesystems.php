@@ -76,6 +76,22 @@ return [
             'report' => false,
         ],
 
+        // Cloudflare R2 (S3-compatible) catalogue product images. Mirrored one-way
+        // from Zoho; private bucket, served only through the gated `catalog.image`
+        // route (never a public bucket URL). Shares the R2 credentials with `r2`.
+        'r2_catalog' => [
+            'driver' => 's3',
+            'key' => env('R2_ACCESS_KEY_ID'),
+            'secret' => env('R2_SECRET_ACCESS_KEY'),
+            'region' => env('R2_DEFAULT_REGION', 'auto'),
+            'bucket' => env('R2_CATALOG_BUCKET'),
+            'endpoint' => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => true,
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

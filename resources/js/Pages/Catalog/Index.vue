@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
-import { Package, Plus, Search } from 'lucide-vue-next'
+import { Plus, Search } from 'lucide-vue-next'
 import PortalLayout from '@/Layouts/PortalLayout.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -93,6 +93,9 @@ const canPlaceOrders = computed(() => {
 function addToCart(uuid: string): void {
   router.post('/cart', { product: uuid, quantity: 1 }, { preserveScroll: true, preserveState: true })
 }
+
+// Heroic-purple fallback shown when a product has no synced image.
+const PLACEHOLDER = '/images/catalog/placeholder.svg'
 </script>
 
 <template>
@@ -150,9 +153,8 @@ function addToCart(uuid: string): void {
         class="group flex flex-col rounded-lg border bg-background p-3 transition-shadow hover:shadow-md"
       >
         <Link :href="`/catalog/${product.uuid}`" class="flex flex-1 flex-col">
-          <div class="mb-3 grid aspect-square place-items-center overflow-hidden rounded-md bg-muted">
-            <img v-if="product.image_url" :src="product.image_url" :alt="product.name" class="h-full w-full object-cover" />
-            <Package v-else class="size-10 text-muted-foreground/40" />
+          <div class="mb-3 aspect-square overflow-hidden rounded-md bg-muted">
+            <img :src="product.image_url ?? PLACEHOLDER" :alt="product.name" class="h-full w-full object-cover" />
           </div>
           <span :class="['inline-block rounded px-1.5 py-0.5 text-xs font-medium', STOCK[product.stock_band].class]">
             {{ STOCK[product.stock_band].label }}
