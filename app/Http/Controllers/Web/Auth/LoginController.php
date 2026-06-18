@@ -22,17 +22,23 @@ class LoginController extends Controller
         ]);
     }
 
-    public function store(LoginRequest $request): RedirectResponse
+    public function store(LoginRequest $request): \Symfony\Component\HttpFoundation\Response
     {
         $request->authenticate();
         $request->session()->regenerate();
 
         $user = $request->user();
 
-        // Resellers (company users) → catalogue; internal staff → admin panel.
-        $destination = $user instanceof User && $user->company_id !== null ? '/catalog' : '/admin';
+        // Internal staff (no company) → Filament admin panel. Filament is not an
+        // Inertia page, so a normal redirect makes the Inertia client render its
+        // HTML in an error modal; Inertia::location() forces a full-page visit so
+        // the panel boots at its own URL.
+        if (! ($user instanceof User && $user->company_id !== null)) {
+            return Inertia::location(route('filament.admin.pages.dashboard'));
+        }
 
-        return redirect()->intended($destination);
+        // Resellers (company users) → catalogue (an Inertia page).
+        return redirect()->intended('/catalog');
     }
 
     public function destroy(Request $request): RedirectResponse
