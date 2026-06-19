@@ -12,6 +12,7 @@ use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Sleep;
+use Psr\Log\LoggerInterface;
 
 final class ZohoClient
 {
@@ -21,6 +22,7 @@ final class ZohoClient
         private readonly HttpFactory $http,
         private readonly CacheFactory $cache,
         private readonly Config $config,
+        private readonly LoggerInterface $logger,
     ) {}
 
     /**
@@ -264,6 +266,8 @@ final class ZohoClient
             $retryable = $response->status() === 429 || $response->serverError();
 
             if (! $retryable || $try >= $max) {
+                $this->logClientError($response);
+
                 throw ZohoException::fromResponse($response);
             }
 
@@ -296,11 +300,29 @@ final class ZohoClient
             $retryable = $response->status() === 429 || $response->serverError();
 
             if (! $retryable || $try >= $max) {
+                $this->logClientError($response);
+
                 throw ZohoException::fromResponse($response);
             }
 
             Sleep::for($this->backoffMs($response, $try, $base))->milliseconds();
         }
+    }
+
+    /**
+     * Log Zoho's full response body on a 4xx so the live cause is visible — e.g.
+     * "Invalid value passed for last_modified_time" on the incremental items list.
+     */
+    private function logClientError(Response $response): void
+    {
+        if (! $response->clientError()) {
+            return;
+        }
+
+        $this->logger->warning('Zoho API client error.', [
+            'status' => $response->status(),
+            'body' => $response->body(),
+        ]);
     }
 
     private function backoffMs(Response $response, int $try, int $base): int

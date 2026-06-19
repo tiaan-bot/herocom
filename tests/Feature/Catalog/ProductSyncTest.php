@@ -7,6 +7,7 @@ use App\Domain\Catalog\Enums\ProductStatus;
 use App\Domain\Catalog\Models\Product;
 use App\Domain\Shared\Zoho\Models\ZohoToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 
@@ -191,4 +192,53 @@ it('does not treat the string "true" alone as ticked (must be the boolean)', fun
     sync();
 
     expect(Product::where('zoho_item_id', '1001')->sole()->sync_to_portal)->toBeFalse();
+});
+
+// --- incremental last_modified_time cursor ---------------------------------
+
+/**
+ * Pull the decoded last_modified_time query value off the items list request.
+ */
+function listFilterValue(Request $request): ?string
+{
+    if (! str_contains($request->url(), '/books/v3/items?')) {
+        return null;
+    }
+
+    parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+    $value = $query['last_modified_time'] ?? null;
+
+    return is_string($value) ? $value : null;
+}
+
+it('builds last_modified_time as Zoho ISO 8601 with a numeric timezone offset', function () {
+    // A stored cursor drives the incremental filter. The naive wall-clock is read
+    // back in the org timezone (Africa/Johannesburg, +02:00) — Y-m-d H:i:s and the
+    // colon-offset variant are both rejected by Zoho with HTTP 400.
+    Product::factory()->create([
+        'zoho_item_id' => 'cursor',
+        'zoho_last_modified_at' => '2026-06-01 10:00:00',
+    ]);
+
+    fakeZohoItems([[]]); // empty page — we only assert on the outgoing request
+
+    app(SyncProductsFromZoho::class)->execute(full: false);
+
+    Http::assertSent(function (Request $request): bool {
+        $value = listFilterValue($request);
+
+        return $value !== null
+            && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}$/', $value) === 1;
+    });
+});
+
+it('falls back to a full sync (no last_modified_time) when no cursor is stored', function () {
+    fakeZohoItems([[]]);
+
+    app(SyncProductsFromZoho::class)->execute(full: false);
+
+    // The list call goes out, but without the filter — equivalent to a full sync.
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/books/v3/items?')
+        && ! str_contains($request->url(), 'last_modified_time'));
 });

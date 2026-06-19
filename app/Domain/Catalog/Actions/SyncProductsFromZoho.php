@@ -23,6 +23,12 @@ use Throwable;
 final class SyncProductsFromZoho
 {
     /**
+     * Zoho Books org timezone — the incremental cursor is expressed in this zone
+     * with a numeric offset, matching how Zoho returns last_modified_time.
+     */
+    private const ORG_TIMEZONE = 'Africa/Johannesburg';
+
+    /**
      * Maps an image MIME type to the storage key extension.
      *
      * @var array<string, string>
@@ -203,17 +209,37 @@ final class SyncProductsFromZoho
     }
 
     /**
+     * Build the incremental `last_modified_time` filter from the latest stored
+     * cursor. Zoho Books wants ISO 8601 with a numeric timezone offset in the org
+     * timezone (e.g. 2026-06-19T14:30:00+0200); the bare `Y-m-d H:i:s` and the
+     * colon-offset variant are both rejected with HTTP 400.
+     *
+     * The cursor is a naive wall-clock persisted from Zoho's own +02:00 timestamps
+     * (app timezone is UTC, so the raw aggregate carries no offset). It is parsed
+     * in Africa/Johannesburg so the changed-since window matches the true instant.
+     *
      * @return array<string, string>
      */
     private function incrementalFilter(): array
     {
         $since = Product::query()->max('zoho_last_modified_at');
 
-        if ($since === null) {
+        // Nothing stored yet → fall back to a full sync rather than send an
+        // empty/invalid last_modified_time filter (Zoho 400s on that).
+        if (blank($since)) {
             return [];
         }
 
-        return ['last_modified_time' => CarbonImmutable::parse($since)->toIso8601String()];
+        $lastModifiedTime = CarbonImmutable::parse((string) $since, self::ORG_TIMEZONE)
+            ->format('Y-m-d\TH:i:sO');
+
+        // Surface the exact value sent — the test suite fakes Zoho, so the real
+        // format can only be confirmed from the live incremental run's logs.
+        $this->logger->debug('Zoho incremental product sync: last_modified_time filter.', [
+            'last_modified_time' => $lastModifiedTime,
+        ]);
+
+        return ['last_modified_time' => $lastModifiedTime];
     }
 
     /**
