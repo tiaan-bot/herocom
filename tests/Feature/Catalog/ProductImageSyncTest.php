@@ -180,6 +180,42 @@ it('syncs the image for a pre-existing product (runs on updates, not only create
     Storage::disk('r2_catalog')->assertExists("products/{$product->id}.jpg");
 });
 
+it('resolves documents[0].document_id and enters the fetch for the real NET-CPE-MIK-HP5-001 payload', function () {
+    // EXACT live inputs (item_id 7763961000000190002): no image_document_id; the
+    // image is image_name + a single image-typed documents[] entry.
+    Http::fake([
+        '*/books/v3/items/7763961000000190002/image*' => Http::response('JPG-BYTES', 200, ['Content-Type' => 'application/octet-stream']),
+        '*/books/v3/items/*' => Http::response(['item' => [
+            'item_id' => '7763961000000190002',
+            'name' => 'NET-CPE-MIK-HP5-001',
+            'sku' => 'NET-CPE-MIK-HP5-001',
+            'custom_field_hash' => ['cf_sync_to_portal_unformatted' => true],
+            'image_document_id' => null,
+            'image_name' => 'RBLHG-5HPnD-XL4pack.jpg',
+            'image_type' => 'jpg',
+            'documents' => [
+                ['document_id' => '7763961000000259290', 'file_name' => 'RBLHG-5HPnD-XL4pack.jpg', 'file_type' => 'jpg', 'attachment_order' => 1],
+            ],
+        ]]),
+        '*/books/v3/items?*' => Http::sequence()
+            ->push(['items' => [['item_id' => '7763961000000190002', 'name' => 'NET-CPE-MIK-HP5-001', 'sku' => 'NET-CPE-MIK-HP5-001', 'rate' => 100, 'status' => 'active']]])
+            ->push(['items' => []]),
+    ]);
+
+    app(SyncProductsFromZoho::class)->execute(true);
+
+    $product = Product::where('zoho_item_id', '7763961000000190002')->sole();
+
+    // The key resolves to documents[0].document_id, and the fetch+store path is entered.
+    expect($product->image_document_id)->toBe('7763961000000259290')
+        ->and($product->image_mime)->toBe('image/jpeg')
+        ->and($product->image_path)->toBe("products/{$product->id}.jpg");
+
+    Http::assertSent(fn (ClientRequest $r): bool => str_contains($r->url(), '/items/7763961000000190002/image'));
+    Storage::disk('r2_catalog')->assertExists("products/{$product->id}.jpg");
+    expect(Storage::disk('r2_catalog')->get("products/{$product->id}.jpg"))->toBe('JPG-BYTES');
+});
+
 it('logs an unconditional syncImage entry line for every item (provable execution)', function () {
     Log::spy();
 
