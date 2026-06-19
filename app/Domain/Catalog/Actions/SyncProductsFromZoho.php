@@ -7,6 +7,7 @@ namespace App\Domain\Catalog\Actions;
 use App\Domain\Catalog\DataTransferObjects\ProductSyncResult;
 use App\Domain\Catalog\Enums\ProductStatus;
 use App\Domain\Catalog\Models\Product;
+use App\Domain\Shared\Zoho\Models\ZohoSyncState;
 use App\Domain\Shared\Zoho\ZohoClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Config\Repository as Config;
@@ -27,6 +28,16 @@ final class SyncProductsFromZoho
      * with a numeric offset, matching how Zoho returns last_modified_time.
      */
     private const ORG_TIMEZONE = 'Africa/Johannesburg';
+
+    /** Sync-state key for the products incremental cursor. */
+    private const CURSOR_KEY = 'products';
+
+    /**
+     * Re-query a little before the cursor so a row written right on the boundary
+     * (or in a clock-skew window) is never missed. The upsert is idempotent, so
+     * re-processing the overlap is harmless.
+     */
+    private const LOOKBACK_MINUTES = 5;
 
     /**
      * Maps an image MIME type to the storage key extension.
@@ -53,7 +64,22 @@ final class SyncProductsFromZoho
     public function execute(bool $full = false): ProductSyncResult
     {
         $now = CarbonImmutable::now();
-        $filters = $full ? [] : $this->incrementalFilter();
+
+        // Incremental runs are driven by an explicit cursor. With nothing stored
+        // yet, fall back to a full sync rather than pulling the whole catalogue
+        // under an empty/invalid filter.
+        $cursor = $full ? null : $this->readCursor();
+        if (! $full && $cursor === null) {
+            $full = true;
+        }
+
+        $filters = $full ? [] : $this->incrementalFilters($cursor);
+
+        // High-water mark of items actually processed this run (UTC). The stored
+        // cursor is advanced to this ONLY after the changed set is fully
+        // paginated below — if the loop throws or the worker times out first, the
+        // advance never runs, so we never skip past unprocessed items.
+        $highWater = $cursor;
 
         $seen = [];
         $synced = 0;
@@ -89,6 +115,7 @@ final class SyncProductsFromZoho
                     $this->syncImage($product, $detail, $zohoItemId);
                 }
 
+                $highWater = $this->advanceHighWater($highWater, $item);
                 $seen[] = $zohoItemId;
                 $synced++;
             }
@@ -103,6 +130,9 @@ final class SyncProductsFromZoho
                 ->where('status', ProductStatus::Active)
                 ->update(['status' => ProductStatus::Inactive, 'last_synced_at' => $now]);
         }
+
+        // Reached only after a clean, complete pagination of the changed set.
+        $this->writeCursor($highWater);
 
         return new ProductSyncResult($synced, $deactivated);
     }
@@ -209,28 +239,21 @@ final class SyncProductsFromZoho
     }
 
     /**
-     * Build the incremental `last_modified_time` filter from the latest stored
-     * cursor. Zoho Books wants ISO 8601 with a numeric timezone offset in the org
-     * timezone (e.g. 2026-06-19T14:30:00+0200); the bare `Y-m-d H:i:s` and the
-     * colon-offset variant are both rejected with HTTP 400.
+     * Build the incremental `last_modified_time` filter from the stored cursor,
+     * less a short lookback overlap. Zoho Books wants ISO 8601 with a numeric
+     * timezone offset in the org timezone (e.g. 2026-06-19T14:30:00+0200); the
+     * bare `Y-m-d H:i:s` and the colon-offset variant are both rejected (HTTP 400).
      *
-     * The cursor is a naive wall-clock persisted from Zoho's own +02:00 timestamps
-     * (app timezone is UTC, so the raw aggregate carries no offset). It is parsed
-     * in Africa/Johannesburg so the changed-since window matches the true instant.
+     * The cursor is a true UTC instant; it is expressed in Africa/Johannesburg so
+     * the value matches how Zoho returns last_modified_time for this org.
      *
      * @return array<string, string>
      */
-    private function incrementalFilter(): array
+    private function incrementalFilters(CarbonImmutable $cursor): array
     {
-        $since = Product::query()->max('zoho_last_modified_at');
-
-        // Nothing stored yet → fall back to a full sync rather than send an
-        // empty/invalid last_modified_time filter (Zoho 400s on that).
-        if (blank($since)) {
-            return [];
-        }
-
-        $lastModifiedTime = CarbonImmutable::parse((string) $since, self::ORG_TIMEZONE)
+        $lastModifiedTime = $cursor
+            ->subMinutes(self::LOOKBACK_MINUTES)
+            ->setTimezone(self::ORG_TIMEZONE)
             ->format('Y-m-d\TH:i:sO');
 
         // Surface the exact value sent — the test suite fakes Zoho, so the real
@@ -240,6 +263,52 @@ final class SyncProductsFromZoho
         ]);
 
         return ['last_modified_time' => $lastModifiedTime];
+    }
+
+    /**
+     * Read the stored products cursor as a true UTC instant, or null if unset.
+     */
+    private function readCursor(): ?CarbonImmutable
+    {
+        $state = ZohoSyncState::query()->where('key', self::CURSOR_KEY)->first();
+
+        return $state?->last_modified_cursor !== null
+            ? CarbonImmutable::instance($state->last_modified_cursor)->utc()
+            : null;
+    }
+
+    /**
+     * Advance the cursor to the high-water mark of this run. No-op when nothing
+     * new was processed (keeps the cursor where it was).
+     */
+    private function writeCursor(?CarbonImmutable $highWater): void
+    {
+        if ($highWater === null) {
+            return;
+        }
+
+        ZohoSyncState::query()->updateOrCreate(
+            ['key' => self::CURSOR_KEY],
+            ['last_modified_cursor' => $highWater->utc()],
+        );
+    }
+
+    /**
+     * Track the latest last_modified_time seen among processed items (UTC).
+     *
+     * @param  array<string, mixed>  $item
+     */
+    private function advanceHighWater(?CarbonImmutable $highWater, array $item): ?CarbonImmutable
+    {
+        if (! isset($item['last_modified_time'])) {
+            return $highWater;
+        }
+
+        $itemModified = CarbonImmutable::parse((string) $item['last_modified_time'])->utc();
+
+        return $highWater === null || $itemModified->greaterThan($highWater)
+            ? $itemModified
+            : $highWater;
     }
 
     /**
@@ -259,8 +328,11 @@ final class SyncProductsFromZoho
             'brand' => $item['brand'] ?? null,
             'category' => $item['category_name'] ?? ($item['group_name'] ?? null),
             'status' => ($item['status'] ?? 'active') === 'active' ? ProductStatus::Active : ProductStatus::Inactive,
+            // Store the true UTC instant. Zoho sends +02:00 timestamps; without the
+            // explicit ->utc() Eloquent persists the SAST wall-clock and reads it
+            // back as UTC (~2h ahead), which then poisons the incremental cursor.
             'zoho_last_modified_at' => isset($item['last_modified_time'])
-                ? CarbonImmutable::parse((string) $item['last_modified_time'])
+                ? CarbonImmutable::parse((string) $item['last_modified_time'])->utc()
                 : null,
             'last_synced_at' => $now,
         ];
