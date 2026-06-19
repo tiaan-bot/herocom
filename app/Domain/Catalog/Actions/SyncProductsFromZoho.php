@@ -201,7 +201,7 @@ final class SyncProductsFromZoho
 
                 $image = $this->zoho->fetchItemImage($zohoItemId);
                 if ($image === null) {
-                    $this->logger->warning('Zoho product image: detail reports an image but the fetch returned nothing.', [
+                    Log::warning('Zoho product image: detail reports an image but the fetch returned nothing.', [
                         'zoho_item_id' => $zohoItemId,
                         'image_key' => $imageKey,
                         'image_fields' => $this->imageFields($detail),
@@ -231,8 +231,9 @@ final class SyncProductsFromZoho
                     'image_mime' => $mime,
                 ])->save();
 
-                // Info level so the run is visible in production (debug is filtered).
-                $this->logger->info('Zoho product image stored.', [
+                // Log via the Log facade — the entry log proved the facade writes in
+                // prod where the injected logger's lines never appeared.
+                Log::info('Zoho product image stored.', [
                     'zoho_item_id' => $zohoItemId,
                     'image_key' => $imageKey,
                     'mime' => $mime,
@@ -254,17 +255,21 @@ final class SyncProductsFromZoho
                     'image_mime' => null,
                 ])->save();
 
+                Log::info('Zoho product image cleared (removed in Zoho).', [
+                    'zoho_item_id' => $zohoItemId,
+                ]);
+
                 return;
             }
 
-            // No image either side. Log the raw image fields so a mis-read of Zoho's
-            // keys (a numeric id, an image_name-only payload, …) is never invisible.
-            $this->logger->debug('Zoho product image: no image detected on a portal item.', [
+            // No image key resolved for a portal item. This is the skip branch that
+            // used to return silently — log it so a future mis-read is never invisible.
+            Log::info('Zoho product image: no image key resolved; skipping.', [
                 'zoho_item_id' => $zohoItemId,
                 'image_fields' => $this->imageFields($detail),
             ]);
         } catch (Throwable $e) {
-            $this->logger->warning('Zoho product image sync failed.', [
+            Log::warning('Zoho product image sync failed.', [
                 'zoho_item_id' => $zohoItemId,
                 'exception' => $e->getMessage(),
             ]);
