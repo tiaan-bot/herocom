@@ -203,11 +203,10 @@ final class ZohoClient
             return null;
         }
 
-        // Content-Type may carry a charset/extra params — keep just the MIME.
+        // Best-effort MIME from the header (Zoho's image endpoint sometimes returns
+        // application/octet-stream); the caller derives the real type from the item's
+        // image_type/file_type, so a non-image content-type must NOT drop the bytes.
         $mime = trim(explode(';', (string) $response->header('Content-Type'))[0]);
-        if (! str_starts_with($mime, 'image/')) {
-            return null;
-        }
 
         return ['contents' => $contents, 'mime' => $mime];
     }

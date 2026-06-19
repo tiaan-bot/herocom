@@ -117,6 +117,69 @@ it('stores the image when Zoho exposes it only via image_name/image_type', funct
     Storage::disk('r2_catalog')->assertExists("products/{$product->id}.png");
 });
 
+it('stores the image from documents[]/image_name when there is no image_document_id (the live shape)', function () {
+    // The real NET-CPE-MIK-HP5-001 payload: no image_document_id; image is in
+    // image_name + documents[0] (file_type jpg). The image endpoint returns the
+    // bytes with an octet-stream content-type, so the mime is derived from the type.
+    fakeCatalogItem(
+        ticked: true,
+        imageDocumentId: null,
+        image: Http::response('JPG-BYTES', 200, ['Content-Type' => 'application/octet-stream']),
+        extraDetail: [
+            'image_name' => 'RBLHG-5HPnD-XL4pack.jpg',
+            'image_type' => 'jpg',
+            'documents' => [
+                ['document_id' => '7763961000000259290', 'file_name' => 'RBLHG-5HPnD-XL4pack.jpg', 'file_type' => 'jpg'],
+            ],
+        ],
+    );
+
+    runSync();
+
+    $product = Product::where('zoho_item_id', '1001')->sole();
+
+    expect($product->image_document_id)->toBe('7763961000000259290') // documents[0].document_id
+        ->and($product->image_mime)->toBe('image/jpeg')               // jpg → image/jpeg
+        ->and($product->image_path)->toBe("products/{$product->id}.jpg");
+
+    Storage::disk('r2_catalog')->assertExists("products/{$product->id}.jpg");
+    expect(Storage::disk('r2_catalog')->get("products/{$product->id}.jpg"))->toBe('JPG-BYTES');
+});
+
+it('syncs the image for a pre-existing product (runs on updates, not only creates)', function () {
+    // Mirrors NET-CPE-MIK-HP5-001: the product pre-existed its image. The image
+    // path must run on the update, not be confined to first-time creates.
+    Product::factory()->create([
+        'zoho_item_id' => '1001',
+        'image_document_id' => null,
+        'image_path' => null,
+        'image_mime' => null,
+    ]);
+
+    fakeCatalogItem(
+        ticked: true,
+        imageDocumentId: null,
+        image: Http::response('JPG-BYTES', 200, ['Content-Type' => 'application/octet-stream']),
+        extraDetail: [
+            'image_name' => 'RBLHG-5HPnD-XL4pack.jpg',
+            'image_type' => 'jpg',
+            'documents' => [
+                ['document_id' => '7763961000000259290', 'file_name' => 'RBLHG-5HPnD-XL4pack.jpg', 'file_type' => 'jpg'],
+            ],
+        ],
+    );
+
+    runSync();
+
+    $product = Product::where('zoho_item_id', '1001')->sole();
+
+    expect($product->image_document_id)->toBe('7763961000000259290')
+        ->and($product->image_mime)->toBe('image/jpeg')
+        ->and($product->image_path)->toBe("products/{$product->id}.jpg");
+
+    Storage::disk('r2_catalog')->assertExists("products/{$product->id}.jpg");
+});
+
 it('logs a warning when Zoho reports an image but the fetch returns nothing', function () {
     Log::spy();
 
