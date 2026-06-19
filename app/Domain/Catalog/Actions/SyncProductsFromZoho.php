@@ -195,8 +195,13 @@ final class SyncProductsFromZoho
                     return;
                 }
 
+                // Prefer the MIME implied by Zoho's image_type/file_type; the raw
+                // image endpoint's Content-Type is unreliable (often octet-stream).
+                $mime = $this->imageMime($detail)
+                    ?? (str_starts_with($image['mime'], 'image/') ? $image['mime'] : 'image/jpeg');
+
                 $disk = $this->disk();
-                $path = "products/{$product->id}.".$this->extensionFor($image['mime']);
+                $path = "products/{$product->id}.".$this->extensionFor($mime);
 
                 // Replace any previous file whose key differs (e.g. format changed).
                 if ($product->image_path !== null && $product->image_path !== $path) {
@@ -208,8 +213,16 @@ final class SyncProductsFromZoho
                 $product->forceFill([
                     'image_path' => $path,
                     'image_document_id' => $imageKey,
-                    'image_mime' => $image['mime'],
+                    'image_mime' => $mime,
                 ])->save();
+
+                // Info level so the run is visible in production (debug is filtered).
+                $this->logger->info('Zoho product image stored.', [
+                    'zoho_item_id' => $zohoItemId,
+                    'image_key' => $imageKey,
+                    'mime' => $mime,
+                    'path' => $path,
+                ]);
 
                 return;
             }
@@ -245,15 +258,27 @@ final class SyncProductsFromZoho
 
     /**
      * Resolve a stable identity key for the item's image from whatever Zoho Books
-     * actually returns. The detail may carry the id as image_document_id (commonly
-     * a JSON *number* — it must not be discarded by a string-only check), expose the
-     * image only via image_name (+ image_type), or list it under documents[].
-     * Returns null when the item has no image.
+     * actually returns. Real item detail carries NO image_document_id — the image is
+     * the first image-typed entry in documents[] (use its document_id), with a
+     * top-level image_name/image_type as a secondary signal. Order:
+     *  1. documents[] first image entry → its document_id (the stable id);
+     *  2. a scalar image_document_id, if some payload provides one (int or string);
+     *  3. a hash of image_name as a last resort.
+     * Returns null when the item has no image. The key is stored in
+     * image_document_id and used to cache-bust the served URL.
      *
      * @param  array<string, mixed>  $detail
      */
     private function zohoImageKey(array $detail): ?string
     {
+        $document = $this->imageDocument($detail);
+        if ($document !== null) {
+            $docId = $document['document_id'] ?? null;
+            if (is_scalar($docId) && (string) $docId !== '') {
+                return (string) $docId;
+            }
+        }
+
         $documentId = $detail['image_document_id'] ?? null;
         if (is_scalar($documentId)) {
             $documentId = (string) $documentId;
@@ -264,22 +289,73 @@ final class SyncProductsFromZoho
 
         $imageName = $detail['image_name'] ?? null;
         if (is_scalar($imageName) && (string) $imageName !== '') {
-            $type = is_scalar($detail['image_type'] ?? null) ? (string) $detail['image_type'] : '';
-
-            // No document id — key on a hash of name+type (URL-safe; the accessor
-            // appends it as ?v=…). A changed name or type re-fetches.
-            return 'name-'.substr(md5((string) $imageName.'|'.$type), 0, 16);
+            // URL-safe (the accessor appends it as ?v=…); a changed name re-fetches.
+            return 'name-'.substr(md5((string) $imageName), 0, 16);
         }
 
+        return null;
+    }
+
+    /**
+     * The first documents[] entry whose file_type is a recognised image type, or
+     * null. Skips non-image attachments (PDFs, spec sheets) that may also be listed.
+     *
+     * @param  array<string, mixed>  $detail
+     * @return array<string, mixed>|null
+     */
+    private function imageDocument(array $detail): ?array
+    {
         $documents = $detail['documents'] ?? null;
-        if (is_array($documents) && isset($documents[0]) && is_array($documents[0])) {
-            $docId = $documents[0]['document_id'] ?? null;
-            if (is_scalar($docId) && (string) $docId !== '') {
-                return (string) $docId;
+        if (! is_array($documents)) {
+            return null;
+        }
+
+        foreach ($documents as $document) {
+            if (! is_array($document)) {
+                continue;
+            }
+
+            $fileType = is_scalar($document['file_type'] ?? null) ? (string) $document['file_type'] : '';
+            if ($this->mimeFromType($fileType) !== null) {
+                return $document;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Derive the stored MIME from Zoho's image_type, else the matched document's
+     * file_type (e.g. "jpg" → image/jpeg). Null when neither names an image type.
+     *
+     * @param  array<string, mixed>  $detail
+     */
+    private function imageMime(array $detail): ?string
+    {
+        $imageType = is_scalar($detail['image_type'] ?? null) ? (string) $detail['image_type'] : '';
+        if (($mime = $this->mimeFromType($imageType)) !== null) {
+            return $mime;
+        }
+
+        $document = $this->imageDocument($detail);
+        $fileType = is_array($document) && is_scalar($document['file_type'] ?? null)
+            ? (string) $document['file_type']
+            : '';
+
+        return $this->mimeFromType($fileType);
+    }
+
+    private function mimeFromType(string $type): ?string
+    {
+        return match (strtolower(trim($type))) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'svg' => 'image/svg+xml',
+            'bmp' => 'image/bmp',
+            default => null,
+        };
     }
 
     /**
@@ -290,11 +366,13 @@ final class SyncProductsFromZoho
      */
     private function imageFields(array $detail): array
     {
+        $documents = $detail['documents'] ?? null;
+
         return [
             'image_document_id' => $detail['image_document_id'] ?? null,
             'image_name' => $detail['image_name'] ?? null,
             'image_type' => $detail['image_type'] ?? null,
-            'has_documents' => ! empty($detail['documents']),
+            'documents_count' => is_array($documents) ? count($documents) : 0,
         ];
     }
 
