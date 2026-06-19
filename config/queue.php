@@ -68,7 +68,10 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            // Must exceed the longest job timeout (SyncZohoProducts is 1500s) so a
+            // long-running full sync is never re-dispatched mid-run — that would
+            // spawn duplicate concurrent syncs and burn through Zoho's daily cap.
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 1800),
             'block_for' => null,
             'after_commit' => false,
         ],

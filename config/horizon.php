@@ -207,7 +207,10 @@ return [
             'maxJobs' => 0,
             'memory' => 128,
             'tries' => 1,
-            'timeout' => 60,
+            // Must cover the longest job (SyncZohoProducts is 1500s) and stay below
+            // the queue connection's retry_after (1800s) so a long full sync runs to
+            // completion without the worker killing it or the queue re-dispatching it.
+            'timeout' => 1500,
             'nice' => 0,
         ],
     ],
