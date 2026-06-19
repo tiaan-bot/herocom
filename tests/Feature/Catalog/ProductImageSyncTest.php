@@ -180,6 +180,26 @@ it('syncs the image for a pre-existing product (runs on updates, not only create
     Storage::disk('r2_catalog')->assertExists("products/{$product->id}.jpg");
 });
 
+it('logs an unconditional syncImage entry line for every item (provable execution)', function () {
+    Log::spy();
+
+    // Even an UNticked item must produce the entry line — that proves the image
+    // path is reached for every item, in both the full and incremental loops.
+    fakeCatalogItem(ticked: false, imageDocumentId: null, extraDetail: [
+        'image_name' => 'RBLHG-5HPnD-XL4pack.jpg',
+        'image_type' => 'jpg',
+    ]);
+
+    runSync();
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(function (string $message, array $context = []): bool {
+            return $message === 'syncImage entry' && ($context['item_id'] ?? null) === '1001';
+        })
+        ->atLeast()
+        ->once();
+});
+
 it('logs a warning when Zoho reports an image but the fetch returns nothing', function () {
     Log::spy();
 
