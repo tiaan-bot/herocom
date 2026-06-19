@@ -163,29 +163,35 @@ final class SyncProductsFromZoho
     }
 
     /**
-     * Reconcile the product's stored image with Zoho's, gated on the image
-     * document id as the change-detection key:
-     *  - Zoho has an image whose id differs (or we hold no file yet) → fetch + store.
+     * Reconcile the product's stored image with Zoho's, gated on the image's
+     * identity key:
+     *  - Zoho has an image whose key differs (or we hold no file yet) → fetch + store.
      *  - Zoho has no image but we held one → delete the object + null the columns.
-     *  - id unchanged → do nothing (no fetch — keeps us within Zoho's daily cap).
-     * Any failure is logged and swallowed so one image never fails the sync.
+     *  - key unchanged → do nothing (no fetch — keeps us within Zoho's daily cap).
+     *
+     * Every skip and failure is logged: a mis-read of Zoho's image keys must never
+     * be silent again.
      *
      * @param  array<string, mixed>  $detail
      */
     private function syncImage(Product $product, array $detail, string $zohoItemId): void
     {
-        $documentId = $detail['image_document_id'] ?? null;
-        $documentId = is_string($documentId) && $documentId !== '' ? $documentId : null;
+        $imageKey = $this->zohoImageKey($detail);
 
         try {
-            if ($documentId !== null) {
-                $unchanged = $documentId === $product->image_document_id && $product->image_path !== null;
-                if ($unchanged) {
-                    return;
+            if ($imageKey !== null) {
+                if ($imageKey === $product->image_document_id && $product->image_path !== null) {
+                    return; // Unchanged — already stored.
                 }
 
                 $image = $this->zoho->fetchItemImage($zohoItemId);
                 if ($image === null) {
+                    $this->logger->warning('Zoho product image: detail reports an image but the fetch returned nothing.', [
+                        'zoho_item_id' => $zohoItemId,
+                        'image_key' => $imageKey,
+                        'image_fields' => $this->imageFields($detail),
+                    ]);
+
                     return;
                 }
 
@@ -201,7 +207,7 @@ final class SyncProductsFromZoho
 
                 $product->forceFill([
                     'image_path' => $path,
-                    'image_document_id' => $documentId,
+                    'image_document_id' => $imageKey,
                     'image_mime' => $image['mime'],
                 ])->save();
 
@@ -219,13 +225,77 @@ final class SyncProductsFromZoho
                     'image_document_id' => null,
                     'image_mime' => null,
                 ])->save();
+
+                return;
             }
+
+            // No image either side. Log the raw image fields so a mis-read of Zoho's
+            // keys (a numeric id, an image_name-only payload, …) is never invisible.
+            $this->logger->debug('Zoho product image: no image detected on a portal item.', [
+                'zoho_item_id' => $zohoItemId,
+                'image_fields' => $this->imageFields($detail),
+            ]);
         } catch (Throwable $e) {
             $this->logger->warning('Zoho product image sync failed.', [
                 'zoho_item_id' => $zohoItemId,
                 'exception' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Resolve a stable identity key for the item's image from whatever Zoho Books
+     * actually returns. The detail may carry the id as image_document_id (commonly
+     * a JSON *number* — it must not be discarded by a string-only check), expose the
+     * image only via image_name (+ image_type), or list it under documents[].
+     * Returns null when the item has no image.
+     *
+     * @param  array<string, mixed>  $detail
+     */
+    private function zohoImageKey(array $detail): ?string
+    {
+        $documentId = $detail['image_document_id'] ?? null;
+        if (is_scalar($documentId)) {
+            $documentId = (string) $documentId;
+            if ($documentId !== '' && $documentId !== '0') {
+                return $documentId;
+            }
+        }
+
+        $imageName = $detail['image_name'] ?? null;
+        if (is_scalar($imageName) && (string) $imageName !== '') {
+            $type = is_scalar($detail['image_type'] ?? null) ? (string) $detail['image_type'] : '';
+
+            // No document id — key on a hash of name+type (URL-safe; the accessor
+            // appends it as ?v=…). A changed name or type re-fetches.
+            return 'name-'.substr(md5((string) $imageName.'|'.$type), 0, 16);
+        }
+
+        $documents = $detail['documents'] ?? null;
+        if (is_array($documents) && isset($documents[0]) && is_array($documents[0])) {
+            $docId = $documents[0]['document_id'] ?? null;
+            if (is_scalar($docId) && (string) $docId !== '') {
+                return (string) $docId;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The image-related fields Zoho returned, for diagnostic logging.
+     *
+     * @param  array<string, mixed>  $detail
+     * @return array<string, mixed>
+     */
+    private function imageFields(array $detail): array
+    {
+        return [
+            'image_document_id' => $detail['image_document_id'] ?? null,
+            'image_name' => $detail['image_name'] ?? null,
+            'image_type' => $detail['image_type'] ?? null,
+            'has_documents' => ! empty($detail['documents']),
+        ];
     }
 
     private function disk(): Filesystem

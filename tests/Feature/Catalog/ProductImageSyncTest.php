@@ -8,6 +8,7 @@ use App\Domain\Shared\Zoho\Models\ZohoToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
@@ -36,14 +37,19 @@ beforeEach(function () {
  * Fake the three item endpoints for a single item (id 1001): the raw-bytes image
  * endpoint (matched first, before the detail wildcard), the JSON detail endpoint,
  * and the list sequence. `$ticked` drives cf_sync_to_portal; `$imageDocumentId`
- * (when non-null) is placed on the detail; `$image` overrides the image response.
+ * (when non-null, may be an int as Zoho actually sends it) is placed on the detail;
+ * `$image` overrides the image response; `$extraDetail` merges extra detail keys
+ * (e.g. image_name / image_type / documents).
+ *
+ * @param  array<string, mixed>  $extraDetail
  */
-function fakeCatalogItem(bool $ticked, ?string $imageDocumentId = null, mixed $image = null): void
+function fakeCatalogItem(bool $ticked, mixed $imageDocumentId = null, mixed $image = null, array $extraDetail = []): void
 {
     $detail = ['custom_field_hash' => $ticked ? ['cf_sync_to_portal_unformatted' => true] : []];
     if ($imageDocumentId !== null) {
         $detail['image_document_id'] = $imageDocumentId;
     }
+    $detail = array_merge($detail, $extraDetail);
 
     Http::fake([
         '*/books/v3/items/*/image*' => $image ?? Http::response('PNG-BYTES', 200, ['Content-Type' => 'image/png']),
@@ -77,6 +83,54 @@ it('stores the image when ticked and the document id is new', function () {
 
     Storage::disk('r2_catalog')->assertExists("products/{$product->id}.png");
     expect(Storage::disk('r2_catalog')->get("products/{$product->id}.png"))->toBe('PNG-BYTES');
+});
+
+it('stores the image when Zoho sends image_document_id as a JSON number', function () {
+    // Regression: Zoho returns image_document_id as an integer. A string-only check
+    // discarded it → the fetch was never attempted and the image stayed null.
+    fakeCatalogItem(ticked: true, imageDocumentId: 460000000012345);
+
+    runSync();
+
+    $product = Product::where('zoho_item_id', '1001')->sole();
+
+    expect($product->image_document_id)->toBe('460000000012345')
+        ->and($product->image_path)->toBe("products/{$product->id}.png");
+
+    Storage::disk('r2_catalog')->assertExists("products/{$product->id}.png");
+});
+
+it('stores the image when Zoho exposes it only via image_name/image_type', function () {
+    // Some Books item payloads carry no image_document_id, only image_name + type.
+    fakeCatalogItem(ticked: true, imageDocumentId: null, extraDetail: [
+        'image_name' => 'mikrotik-hp5.png',
+        'image_type' => 'png',
+    ]);
+
+    runSync();
+
+    $product = Product::where('zoho_item_id', '1001')->sole();
+
+    expect($product->image_document_id)->toStartWith('name-')
+        ->and($product->image_path)->toBe("products/{$product->id}.png");
+
+    Storage::disk('r2_catalog')->assertExists("products/{$product->id}.png");
+});
+
+it('logs a warning when Zoho reports an image but the fetch returns nothing', function () {
+    Log::spy();
+
+    // Detail advertises an image, but the image endpoint yields no usable bytes.
+    fakeCatalogItem(ticked: true, imageDocumentId: 'doc-1', image: Http::response('', 200, ['Content-Type' => 'image/png']));
+
+    runSync();
+
+    $product = Product::where('zoho_item_id', '1001')->sole();
+    expect($product->image_path)->toBeNull();
+
+    Log::shouldHaveReceived('warning')
+        ->withArgs(fn (string $message): bool => str_contains($message, 'fetch returned nothing'))
+        ->once();
 });
 
 it('does NOT fetch the image when the document id is unchanged', function () {
