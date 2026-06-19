@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Domain\Catalog\Actions\SyncProductsFromZoho;
 use App\Domain\Catalog\Enums\ProductStatus;
 use App\Domain\Catalog\Models\Product;
+use App\Domain\Shared\Zoho\Exceptions\ZohoException;
+use App\Domain\Shared\Zoho\Models\ZohoSyncState;
 use App\Domain\Shared\Zoho\Models\ZohoToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -212,14 +214,23 @@ function listFilterValue(Request $request): ?string
     return is_string($value) ? $value : null;
 }
 
-it('builds last_modified_time as Zoho ISO 8601 with a numeric timezone offset', function () {
-    // A stored cursor drives the incremental filter. The naive wall-clock is read
-    // back in the org timezone (Africa/Johannesburg, +02:00) — Y-m-d H:i:s and the
-    // colon-offset variant are both rejected by Zoho with HTTP 400.
-    Product::factory()->create([
-        'zoho_item_id' => 'cursor',
-        'zoho_last_modified_at' => '2026-06-01 10:00:00',
-    ]);
+function setCursor(string $utc): void
+{
+    ZohoSyncState::query()->create(['key' => 'products', 'last_modified_cursor' => $utc]);
+}
+
+function storedCursor(): ?string
+{
+    $state = ZohoSyncState::query()->where('key', 'products')->first();
+
+    return $state?->last_modified_cursor?->utc()->format('Y-m-d H:i:s');
+}
+
+it('queries with a 5-minute lookback in org-tz ISO 8601 with a numeric offset', function () {
+    // Cursor is a true UTC instant; the filter is (cursor − 5 min) expressed in the
+    // org timezone (Africa/Johannesburg, +02:00). Y-m-d H:i:s and the colon-offset
+    // variant are both rejected by Zoho with HTTP 400.
+    setCursor('2026-06-19 07:42:04');
 
     fakeZohoItems([[]]); // empty page — we only assert on the outgoing request
 
@@ -228,8 +239,8 @@ it('builds last_modified_time as Zoho ISO 8601 with a numeric timezone offset', 
     Http::assertSent(function (Request $request): bool {
         $value = listFilterValue($request);
 
-        return $value !== null
-            && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}$/', $value) === 1;
+        return $value === '2026-06-19T09:37:04+0200' // 07:42:04Z − 5 min, +02:00
+            && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}$/', (string) $value) === 1;
     });
 });
 
@@ -241,4 +252,54 @@ it('falls back to a full sync (no last_modified_time) when no cursor is stored',
     // The list call goes out, but without the filter — equivalent to a full sync.
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/books/v3/items?')
         && ! str_contains($request->url(), 'last_modified_time'));
+});
+
+it('stores zoho_last_modified_at as a true UTC instant', function () {
+    // Zoho sends +02:00; the stored value must be the true UTC instant (07:41:41Z),
+    // not the SAST wall-clock (~2h ahead) that would poison the incremental cursor.
+    fakeZohoItems([[zohoItem(['item_id' => '1001', 'last_modified_time' => '2026-06-19T09:41:41+0200'])], []]);
+
+    sync(); // full
+
+    $product = Product::where('zoho_item_id', '1001')->sole();
+
+    expect($product->zoho_last_modified_at->utc()->format('Y-m-d H:i:s'))->toBe('2026-06-19 07:41:41');
+});
+
+it('advances the cursor to the high-water mark after a full incremental pass', function () {
+    setCursor('2026-06-19 06:00:00');
+
+    fakeZohoItems([
+        [zohoItem(['item_id' => '1001', 'last_modified_time' => '2026-06-19T09:41:41+0200'])], // 07:41:41Z
+        [],
+    ]);
+
+    app(SyncProductsFromZoho::class)->execute(full: false);
+
+    expect(storedCursor())->toBe('2026-06-19 07:41:41');
+});
+
+it('does not advance the cursor past unprocessed items when a run aborts mid-pagination', function () {
+    // This is the regression: a partially-completed run must never jump the cursor
+    // forward, or the items it never reached are excluded from every later query.
+    config(['zoho.retry.max_attempts' => 1]);
+    Sleep::fake();
+
+    setCursor('2026-06-19 07:00:00');
+
+    Http::fake([
+        '*/books/v3/items/*' => Http::response(['item' => ['custom_field_hash' => []]]),
+        '*/books/v3/items?*' => Http::sequence()
+            // Page 1 processes one (newer) item, then page 2 fails before the run completes.
+            ->push(['items' => [zohoItem(['item_id' => '1001', 'last_modified_time' => '2026-06-19T09:41:41+0200'])]])
+            ->push('', 500),
+    ]);
+
+    expect(fn () => app(SyncProductsFromZoho::class)->execute(full: false))
+        ->toThrow(ZohoException::class);
+
+    // The page-1 item was written...
+    expect(Product::where('zoho_item_id', '1001')->exists())->toBeTrue()
+        // ...but the cursor stayed put, so the unprocessed remainder is re-queried next run.
+        ->and(storedCursor())->toBe('2026-06-19 07:00:00');
 });
