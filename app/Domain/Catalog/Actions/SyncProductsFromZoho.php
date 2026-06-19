@@ -13,6 +13,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Log;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
@@ -109,11 +110,11 @@ final class SyncProductsFromZoho
                     $attributes,
                 );
 
-                // Image handling only for portal-visible products. A single image
+                // Always enter syncImage (it logs an entry line + decides internally
+                // whether to act) so the image path is provably reached for every
+                // item in BOTH the full and incremental loops. A single image
                 // failure logs and continues — it never fails the product or job.
-                if ($syncToPortal) {
-                    $this->syncImage($product, $detail, $zohoItemId);
-                }
+                $this->syncImage($product, $detail, $zohoItemId, $syncToPortal);
 
                 $highWater = $this->advanceHighWater($highWater, $item);
                 $seen[] = $zohoItemId;
@@ -169,13 +170,27 @@ final class SyncProductsFromZoho
      *  - Zoho has no image but we held one → delete the object + null the columns.
      *  - key unchanged → do nothing (no fetch — keeps us within Zoho's daily cap).
      *
-     * Every skip and failure is logged: a mis-read of Zoho's image keys must never
-     * be silent again.
+     * The first line logs an entry record (sku + item_id) UNCONDITIONALLY via the
+     * Log facade, so the prod log proves this runs for every item in both the full
+     * and incremental paths. Non-portal items are skipped here (not at the call
+     * site) so the skip is visible too. Every skip and failure is logged.
      *
      * @param  array<string, mixed>  $detail
      */
-    private function syncImage(Product $product, array $detail, string $zohoItemId): void
+    private function syncImage(Product $product, array $detail, string $zohoItemId, bool $syncToPortal): void
     {
+        Log::info('syncImage entry', [
+            'sku' => $product->sku,
+            'item_id' => $zohoItemId,
+            'sync_to_portal' => $syncToPortal,
+            'image_fields' => $this->imageFields($detail),
+        ]);
+
+        // Image handling only for portal-visible products.
+        if (! $syncToPortal) {
+            return;
+        }
+
         $imageKey = $this->zohoImageKey($detail);
 
         try {
